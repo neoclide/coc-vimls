@@ -1,0 +1,119 @@
+{
+  "name": "coc-vimls",
+  "version": "0.0.1",
+  "description": "Vim script language support for coc.nvim powered by vimls-go",
+  "main": "lib/index.js",
+  "files": [
+    "lib"
+  ],
+  "engines": {
+    "node": ">=22.15.0",
+    "coc": "^0.0.82"
+  },
+  "activationEvents": [
+    "onLanguage:vim",
+    "onCommand:vimls.update"
+  ],
+  "contributes": {
+    "configuration": {
+      "type": "object",
+      "title": "Vim language server",
+      "properties": {
+        "vimls.trace.server": {
+          "type": "string",
+          "enum": ["off", "messages", "verbose"],
+          "default": "off",
+          "description": "Trace communication with vimls-go in the vimls-go output channel."
+        },
+        "vimls.command": {
+          "type": "string",
+          "default": "",
+          "description": "Path to a custom vimls-go executable. Empty downloads the latest GitHub release automatically. Requires extension reload."
+        },
+        "vimls.args": {
+          "type": "array",
+          "default": [],
+          "description": "Arguments passed to vimls-go (stdio transport). Requires extension reload.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "vim.configFiles": {
+          "type": "array",
+          "default": [],
+          "description": "Absolute paths or glob patterns for user configuration files; ~/ is supported. Requires server restart.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "vim.workspace.rebuildDebounce": {
+          "type": "integer",
+          "default": 100,
+          "description": "Delay in milliseconds before rebuilding the workspace index.",
+          "minimum": 0
+        },
+        "vim.suggest.excludeRuntimePath": {
+          "type": "boolean",
+          "default": false,
+          "description": "Exclude completion items from runtime paths outside the workspace."
+        },
+        "vim.diagnostic.disabled": {
+          "type": "array",
+          "default": [],
+          "description": "Exact diagnostic codes to suppress.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "vim.diagnostic.override": {
+          "type": "object",
+          "default": {},
+          "description": "Override severity for exact diagnostic codes.",
+          "additionalProperties": {
+            "type": "string",
+            "enum": [
+              "error",
+              "warning",
+              "information",
+              "hint"
+            ]
+          }
+        },
+        "vim.diagnostic.maxNumber": {
+          "type": "integer",
+          "default": 1000,
+          "description": "Maximum diagnostics per document, including the truncation marker.",
+          "minimum": 1
+        }
+      }
+    },
+    "commands": [
+      {
+        "command": "vimls.update",
+        "title": "Update vimls-go to the latest release"
+      }
+    ]
+  },
+  "scripts": {
+    "build": "node esbuild.js",
+    "prepare": "npm run build",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "npm run test:nvim",
+    "test:nvim": "coc-test --nvim \"test/**/*.test.ts\"",
+    "test:vim": "coc-test --vim \"test/**/*.test.ts\""
+  },
+  "coc-test": {
+    "entryFile": "src/index.ts",
+    "setup": "test/setup.mjs",
+    "user-settings": {
+      "vimls.command": "vimls"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^22.20.1",
+    "coc-test": "^0.2.0",
+    "coc.nvim": "^0.0.83-next.27",
+    "esbuild": "^0.28.2",
+    "typescript": "^6.0.3"
+  }
+}

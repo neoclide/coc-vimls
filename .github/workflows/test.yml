@@ -1,0 +1,42 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  integration:
+    name: coc-test (${{ matrix.editor }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        editor: [nvim, vim]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Install editors
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y neovim vim
+      - uses: actions/checkout@v4
+        with:
+          repository: neoclide/vimls-go
+          ref: 0b8c90c86b32e2e7af86ffaa128dff6d72a36656
+          path: .vimls-go
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26.x'
+          cache: false
+      - name: Build integration server
+        run: |
+          mkdir -p .test-bin
+          cd .vimls-go
+          go build -o ../.test-bin/vimls ./cmd/vimls
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run build
+      - run: npm run test:${{ matrix.editor }}
