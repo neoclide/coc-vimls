@@ -5,7 +5,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { after, before, describe, it } from 'node:test'
-import { commands, DocumentSymbol, LanguageClient, services, workspace } from 'coc.nvim'
+import { commands, DocumentSymbol, LanguageClient, Range, services, workspace } from 'coc.nvim'
 import { deactivate } from '../src/index.ts'
 import { assetName, cachedServer, installRelease } from '../src/server.ts'
 
@@ -158,4 +158,36 @@ describe('coc-vimls', () => {
     assert.ok(symbols.some(symbol => symbol.name.includes('HelloVimls')))
   })
 
+  it('supports restart, openOutput, and doctor commands', async () => {
+    assert.equal(commands.has('vimls.restart'), true)
+    assert.equal(commands.has('vimls.openOutput'), true)
+    assert.equal(commands.has('vimls.doctor'), true)
+    assert.equal(commands.has('vimls.executeSelected'), true)
+
+    await commands.executeCommand('vimls.openOutput')
+    await commands.executeCommand('vimls.doctor')
+    await commands.executeCommand('vimls.restart')
+    await waitFor(() => client.isRunning() === true)
+    assert.equal(client.isRunning(), true)
+  })
+
+  it('provides codeAction for nonempty range and executes selected Vim script', async () => {
+    const document = await workspace.document
+    await document.buffer.setLines(['let g:coc_vimls_tested = 100'], { start: 0, end: -1, strictIndexing: false })
+    await document.synchronize()
+
+    const range = Range.create(0, 0, 0, 28)
+    await commands.executeCommand('vimls.executeSelected', document.uri, range)
+    assert.equal(await workspace.nvim.getVar('coc_vimls_tested'), 100)
+  })
+
+  it('executes selected Vim9 script using system vim in Neovim', async () => {
+    const document = await workspace.document
+    await document.buffer.setLines(['vim9script', 'var test_num = 123 + 456', 'echo test_num'], { start: 0, end: -1, strictIndexing: false })
+    await document.synchronize()
+
+    const range = Range.create(1, 0, 2, 13)
+    const res = await commands.executeCommand('vimls.executeSelected', document.uri, range)
+    assert.equal(res, '579')
+  })
 })

@@ -16,7 +16,11 @@
   },
   "activationEvents": [
     "onLanguage:vim",
-    "onCommand:vimls.update"
+    "onCommand:vimls.update",
+    "onCommand:vimls.restart",
+    "onCommand:vimls.doctor",
+    "onCommand:vimls.openOutput",
+    "onCommand:vimls.executeSelected"
   ],
   "contributes": {
     "configuration": {
@@ -25,9 +29,13 @@
       "properties": {
         "vimls.trace.server": {
           "type": "string",
-          "enum": ["off", "messages", "verbose"],
+          "enum": [
+            "off",
+            "messages",
+            "verbose"
+          ],
           "default": "off",
-          "description": "Trace communication with vimls-go in the vimls-go output channel."
+          "description": "Trace communication with vimls-go in the vimls output channel."
         },
         "vimls.command": {
           "type": "string",
@@ -41,6 +49,11 @@
           "items": {
             "type": "string"
           }
+        },
+        "vimls.vimCommand": {
+          "type": "string",
+          "default": "vim",
+          "description": "Path to system vim executable for executing Vim9 script in Neovim."
         },
         "vim.configFiles": {
           "type": "array",
@@ -95,6 +108,22 @@
       {
         "command": "vimls.update",
         "title": "Update vimls-go to the latest release"
+      },
+      {
+        "command": "vimls.restart",
+        "title": "Restart vim language server"
+      },
+      {
+        "command": "vimls.doctor",
+        "title": "Show vimls diagnostics and health information"
+      },
+      {
+        "command": "vimls.openOutput",
+        "title": "Open vimls output channel"
+      },
+      {
+        "command": "vimls.executeSelected",
+        "title": "Execute selected Vim script"
       }
     ]
   },

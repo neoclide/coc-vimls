@@ -49,7 +49,22 @@ must be updated manually. Clear that setting and reload the extension to return
 to managed release downloads.
 
 The service appears as `vimls` in `:CocList services`; logs are available in the
-`vimls-go` output channel through `:CocCommand workspace.showOutput`.
+`vimls` output channel through `:CocCommand vimls.openOutput` or `:CocCommand workspace.showOutput`.
+
+The extension automatically checks for new releases once a week in the background and notifies you when an update is available.
+
+## Commands
+
+- `vimls.update`: Check the latest GitHub release and install it if needed, then restart the language service.
+- `vimls.restart`: Restart the `vimls-go` language server.
+- `vimls.doctor`: Display health information, binary details, versions, and active runtimepath entries in the output channel.
+- `vimls.openOutput`: Open the `vimls` output channel.
+- `vimls.executeSelected`: Execute the currently selected Vim script lines (also exposed as a Code Action for nonempty visual selections). Automatically distinguishes between Vim9 script and legacy Vim script, executing Vim9 script with system Vim when running in Neovim.
+
+## Code Actions
+
+- `Execute selected Vim script`: Available when selecting a nonempty range of Vim script code to execute directly in the running editor.
+
 
 ## Settings
 
@@ -57,9 +72,10 @@ Set options in `:CocConfig`:
 
 | Setting | Default | Description |
 | --- | --- | --- |
-| `vimls.trace.server` | `"off"` | Protocol logging: `off`, `messages` or `verbose`. Updates dynamically; logs appear in the `vimls-go` output channel. |
+| `vimls.trace.server` | `"off"` | Protocol logging: `off`, `messages` or `verbose`. Updates dynamically; logs appear in the `vimls` output channel. |
 | `vimls.command` | `""` | Custom executable path; empty uses managed GitHub releases. Reload after changing. |
 | `vimls.args` | `[]` | Server arguments; retain stdio transport. Reload after changing. |
+| `vimls.vimCommand` | `"vim"` | Path to system vim executable for executing Vim9 script in Neovim. |
 | `vim.configFiles` | `[]` | Absolute paths/globs, including `~/`, treated as user configuration files. Restart the server after changing. |
 | `vim.workspace.rebuildDebounce` | `100` | Workspace rebuild delay in milliseconds. |
 | `vim.suggest.excludeRuntimePath` | `false` | Exclude completion items from runtime files outside the workspace. |

@@ -44,6 +44,16 @@ export async function cachedServer(storage: string): Promise<string | undefined>
   }
 }
 
+export async function installedVersion(storage: string): Promise<string | undefined> {
+  try {
+    const name = (await readFile(join(storage, 'current'), 'utf8')).trim()
+    if (!/^server-[a-zA-Z0-9]+$/.test(name)) return
+    return (await readFile(join(storage, name, 'version'), 'utf8')).trim()
+  } catch {
+    return
+  }
+}
+
 export async function installRelease(storage: string, release: Release): Promise<string> {
   const name = assetName()
   const asset = release.assets.find(asset => asset.name === name)
