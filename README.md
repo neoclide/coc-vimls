@@ -1,4 +1,10 @@
+<p align="center">
+  <img src="https://raw.githubusercontent.com/neoclide/coc-vimls/main/assets/logo.svg" width="160" alt="coc-vimls logo">
+</p>
+
 # coc-vimls
+
+[![CI](https://github.com/neoclide/coc-vimls/actions/workflows/test.yml/badge.svg)](https://github.com/neoclide/coc-vimls/actions/workflows/test.yml)
 
 Vim script and Vim9 script language support for coc.nvim, powered by
 [vimls-go](https://github.com/neoclide/vimls-go).
