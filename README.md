@@ -35,8 +35,8 @@ language-server extension to avoid running duplicate servers.
 
 Checks the latest GitHub release and installs it if needed, then restarts the
 language service. Failed downloads or checksum checks preserve the previous
-installation and running service. Old installations are retained in extension
-storage so an executable still in use is never overwritten.
+installation and running service. After a successful installation, only the current
+version and one previous version are retained in extension storage.
 
 When `vimls.command` is configured, the command explains that the custom executable
 must be updated manually. Clear that setting and reload the extension to return

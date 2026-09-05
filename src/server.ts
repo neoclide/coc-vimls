@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
-import { access, chmod, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { access, chmod, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { constants } from 'node:fs'
-import { basename, join } from 'node:path'
-import { download, fetch } from 'coc.nvim'
+import { basename, dirname, join } from 'node:path'
+import { download, fetch, window } from 'coc.nvim'
 
 export interface Release {
   tag_name: string
@@ -49,8 +49,10 @@ export async function installRelease(storage: string, release: Release): Promise
   const asset = release.assets.find(asset => asset.name === name)
   const checksums = release.assets.find(asset => asset.name === 'checksums.txt')
   if (!asset || !checksums) throw new Error(`Release ${release.tag_name} is missing ${name} or checksums.txt`)
+  const previous = await cachedServer(storage)
   await mkdir(storage, { recursive: true })
   const directory = await mkdtemp(join(storage, 'server-'))
+  const binary = join(directory, process.platform === 'win32' ? 'vimls.exe' : 'vimls')
   try {
     const checksumText = await fetch(checksums.browser_download_url, { timeout: 30000 })
     const line = String(checksumText).split(/\r?\n/).find(line => line.trim().split(/\s+/)[1]?.replace(/^\*/, '') === name)
@@ -59,19 +61,30 @@ export async function installRelease(storage: string, release: Release): Promise
     const downloaded = await download(asset.browser_download_url, { dest: directory, timeout: 120000 })
     const actual = createHash('sha256').update(await readFile(downloaded)).digest('hex')
     if (actual !== expected.toLowerCase()) throw new Error(`SHA-256 mismatch for ${name}`)
-    const binary = join(directory, process.platform === 'win32' ? 'vimls.exe' : 'vimls')
     await rename(downloaded, binary)
     await chmod(binary, 0o755)
     await writeFile(join(directory, 'version'), release.tag_name)
-    // Publish only a complete installation. Old binaries remain available to running clients.
+    // Publish only a complete installation before pruning older versions.
     const marker = join(directory, 'current')
     await writeFile(marker, basename(directory))
     await rename(marker, join(storage, 'current'))
-    return binary
   } catch (error) {
     await rm(directory, { recursive: true, force: true })
     throw error
   }
+  // Retain the previous installation, which the client may still be running.
+  // Cleanup failure must never roll back or delete the published installation.
+  try {
+    for (const entry of await readdir(storage, { withFileTypes: true })) {
+      if (!entry.isDirectory() || !/^server-[a-zA-Z0-9]+$/.test(entry.name)) continue
+      const candidate = join(storage, entry.name)
+      if (candidate === directory || (previous && candidate === dirname(previous))) continue
+      await rm(candidate, { recursive: true, force: true })
+    }
+  } catch (error) {
+    void window.showWarningMessage(`vimls-go was installed, but old versions could not be removed: ${String(error)}`)
+  }
+  return binary
 }
 
 export async function ensureServer(storage: string, update = false): Promise<string> {

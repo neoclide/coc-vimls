@@ -2,6 +2,10 @@
   "name": "coc-vimls",
   "version": "0.0.1",
   "description": "Vim script language support for coc.nvim powered by vimls-go",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/neoclide/coc-vimls"
+  },
   "main": "lib/index.js",
   "files": [
     "lib"

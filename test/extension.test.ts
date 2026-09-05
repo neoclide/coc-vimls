@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readdir, rm } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { basename, dirname, join, resolve } from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import { commands, DocumentSymbol, LanguageClient, services, workspace } from 'coc.nvim'
 import { deactivate } from '../src/index.ts'
@@ -106,7 +106,7 @@ describe('coc-vimls', () => {
       client.sendRequest = sendRequest
     }
   })
-  it('keeps the installed binary when a download fails checksum verification', async () => {
+  it('retains one previous version and preserves both versions on failed downloads', async () => {
     const body = Buffer.from('fixture server binary')
     let checksum = createHash('sha256').update(body).digest('hex')
     const http = createServer((request, response) => {
@@ -128,9 +128,17 @@ describe('coc-vimls', () => {
       ] }
       const binary = await installRelease(storage, release)
       assert.equal(await cachedServer(storage), binary)
+      await mkdir(join(storage, 'unrelated'))
+      const second = await installRelease(storage, { ...release, tag_name: 'v2.0.0' })
+      assert.deepEqual((await readdir(storage)).sort(), [basename(dirname(binary)), basename(dirname(second)), 'current', 'unrelated'].sort())
+      const third = await installRelease(storage, { ...release, tag_name: 'v3.0.0' })
+      const retained = [basename(dirname(second)), basename(dirname(third)), 'current', 'unrelated'].sort()
+      assert.deepEqual((await readdir(storage)).sort(), retained)
+      assert.equal(await cachedServer(storage), third)
       checksum = '0'.repeat(64)
-      await assert.rejects(installRelease(storage, { ...release, tag_name: 'v2.0.0' }), /SHA-256 mismatch/)
-      assert.equal(await cachedServer(storage), binary)
+      await assert.rejects(installRelease(storage, { ...release, tag_name: 'v4.0.0' }), /SHA-256 mismatch/)
+      assert.equal(await cachedServer(storage), third)
+      assert.deepEqual((await readdir(storage)).sort(), retained)
       assert.equal(assetName('win32', 'x64'), 'vimls-windows-amd64.exe')
       assert.throws(() => assetName('linux', 'ia32'), /No vimls-go release binary/)
     } finally {
