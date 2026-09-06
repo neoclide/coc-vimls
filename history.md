@@ -1,3 +1,8 @@
+## 0.0.2
+
+- support vim9 script execution in executeSelected (7fd8908)
+- add logo and release.yml (828814b)
+
 ## 0.0.1
 
 - Initial release.
