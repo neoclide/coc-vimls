@@ -1,6 +1,7 @@
 import { CodeAction, CodeActionKind, CodeActionProvider, commands, ExtensionContext, LanguageClient, languages, Range, services, window, workspace } from 'coc.nvim'
 import { cachedServer, ensureServer, installedVersion, latestRelease } from './server'
 import { executeVimScript, isVim9 } from './execute'
+import { registerDiagnosticQuickfix } from './diagnostic'
 
 let client: LanguageClient | undefined
 let updating: Promise<void> | undefined
@@ -32,6 +33,7 @@ async function checkWeeklyUpdate(context: ExtensionContext): Promise<void> {
 }
 
 export async function activate(context: ExtensionContext): Promise<void> {
+  registerDiagnosticQuickfix(context)
   const config = workspace.getConfiguration('vimls')
   const serverOptions = { command: config.get<string>('command', '') || '', args: config.get<string[]>('args', []) }
   context.subscriptions.push(commands.registerCommand('vimls.update', () => {

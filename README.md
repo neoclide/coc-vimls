@@ -63,6 +63,7 @@ The extension automatically checks for new releases once a week in the backgroun
 
 ## Code Actions
 
+- `Disable diagnostic <code>`: A quickfix for the vimls diagnostic nearest the cursor on the current line. Adds its code to the user setting `vim.diagnostic.disabled`, preserving existing entries. Suppresses that diagnostic code across files.
 - `Execute selected Vim script`: Available when selecting a nonempty range of Vim script code to execute directly in the running editor.
 
 

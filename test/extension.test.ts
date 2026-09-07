@@ -5,7 +5,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { after, before, describe, it } from 'node:test'
-import { commands, DocumentSymbol, LanguageClient, Range, services, workspace } from 'coc.nvim'
+import { CodeAction, CodeActionKind, commands, Diagnostic, diagnosticManager, DocumentSymbol, LanguageClient, Range, services, workspace } from 'coc.nvim'
 import { deactivate } from '../src/index.ts'
 import { assetName, cachedServer, installRelease } from '../src/server.ts'
 
@@ -189,5 +189,95 @@ describe('coc-vimls', () => {
     const range = Range.create(1, 0, 2, 13)
     const res = await commands.executeCommand('vimls.executeSelected', document.uri, range)
     assert.equal(res, '579')
+  })
+
+  it('offers the nearest diagnostic quickfix and preserves disabled codes', async t => {
+    const document = await workspace.document
+    await document.buffer.setLines(['" 中文 ' + 'x'.repeat(60), '" another line'], { start: 0, end: -1, strictIndexing: false })
+    await document.synchronize()
+    const diagnostic = (code: string, range: Range): Diagnostic => ({ code, range, message: code, source: 'vimls' })
+    const left = diagnostic('left', Range.create(0, 5, 0, 10))
+    const right = diagnostic('right', Range.create(0, 25, 0, 30))
+    t.mock.method(diagnosticManager, 'getDiagnosticsInRange', () => [
+      left, right, diagnostic('other-line', Range.create(1, 0, 1, 20)),
+      { ...diagnostic('other-provider', Range.create(0, 22, 0, 24)), source: 'other' },
+    ])
+    const config = workspace.getConfiguration('vim')
+    const original = config.inspect<string[]>('diagnostic.disabled')?.globalValue
+    try {
+      await config.update('diagnostic.disabled', ['existing'], true)
+      // Vim cursor columns are bytes; the provider must compare UTF-16 columns.
+      await workspace.nvim.call('cursor', [1, Buffer.byteLength(document.getline(0).slice(0, 23)) + 1])
+      const actions = await workspace.nvim.call('CocAction', ['codeActions', 'line', [CodeActionKind.QuickFix]]) as CodeAction[]
+      const fixes = actions.filter(action => action.command?.command === 'vimls.disableDiagnostic')
+      assert.equal(fixes.length, 1)
+      assert.equal(fixes[0].title, 'Disable diagnostic right')
+      assert.equal(fixes[0].diagnostics?.[0].code, 'right')
+      assert.deepEqual(workspace.getConfiguration('vim').get('diagnostic.disabled'), ['existing'])
+      // Read the configuration when executing, including changes made since the menu opened.
+      await config.update('diagnostic.disabled', ['existing', 'added-later'], true)
+      await workspace.nvim.call('CocAction', ['doCodeAction', fixes[0]])
+      await workspace.nvim.call('CocAction', ['doCodeAction', fixes[0]])
+      assert.deepEqual(workspace.getConfiguration('vim').get('diagnostic.disabled'), ['existing', 'added-later', 'right'])
+    } finally {
+      await config.update('diagnostic.disabled', original, true)
+    }
+  })
+
+  it('prefers a containing diagnostic over a closer start and excludes other lines', async t => {
+    const document = await workspace.document
+    await document.buffer.setLines(['" ' + 'x'.repeat(60), '" empty'], { start: 0, end: -1, strictIndexing: false })
+    await document.synchronize()
+    t.mock.method(diagnosticManager, 'getDiagnosticsInRange', () => [
+      { code: 'near-start', source: 'vimls', message: '', range: Range.create(0, 26, 0, 28) },
+      { code: 'containing', source: 'vimls', message: '', range: Range.create(0, 2, 0, 25) },
+    ])
+    await workspace.nvim.call('cursor', [1, 24])
+    const getFixes = async () => {
+      const actions = await workspace.nvim.call('CocAction', ['codeActions', 'cursor', [CodeActionKind.QuickFix]]) as CodeAction[]
+      return actions.filter(action => action.command?.command === 'vimls.disableDiagnostic')
+    }
+    assert.equal((await getFixes())[0]?.title, 'Disable diagnostic containing')
+    await workspace.nvim.call('cursor', [2, 1])
+    assert.equal((await getFixes()).length, 0)
+  })
+
+  it('ignores diagnostics without codes and multiline ranges ending before the current line', async t => {
+    const document = await workspace.document
+    await document.buffer.setLines(['" first', '" second'], { start: 0, end: -1, strictIndexing: false })
+    await document.synchronize()
+    t.mock.method(diagnosticManager, 'getDiagnosticsInRange', () => [
+      { source: 'vimls', message: 'no code', range: Range.create(1, 0, 1, 8) },
+      { code: 'previous-line', source: 'vimls', message: '', range: Range.create(0, 0, 1, 0) },
+    ])
+    await workspace.nvim.call('cursor', [2, 3])
+    const actions = await workspace.nvim.call('CocAction', ['codeActions', 'line', [CodeActionKind.QuickFix]]) as CodeAction[]
+    assert.equal(actions.filter(action => action.command?.command === 'vimls.disableDiagnostic').length, 0)
+  })
+
+  it('disables a real pull diagnostic hint through coc-fix-current', async () => {
+    await workspace.nvim.command('enew!')
+    await workspace.nvim.command('setfiletype vim')
+    const document = await workspace.document
+    const config = workspace.getConfiguration('vim')
+    const original = config.inspect<string[]>('diagnostic.disabled')?.globalValue
+    const code = 'vimls/unused-variable'
+    try {
+      await config.update('diagnostic.disabled', [], true)
+      await document.buffer.setLines(['vim9script', 'var UnusedQuickfix = 1'], { start: 0, end: -1, strictIndexing: false })
+      await document.synchronize()
+      await workspace.nvim.call('cursor', [2, 8])
+      const diagnostics = () => diagnosticManager.getDiagnosticsInRange(document.textDocument, Range.create(0, 0, 2, 0))
+      await waitFor(() => diagnostics().some(diagnostic => diagnostic.code === code))
+      assert.equal(diagnostics().find(diagnostic => diagnostic.code === code)?.severity, 4)
+      const actions = await workspace.nvim.call('CocAction', ['quickfixes', 'currline']) as CodeAction[]
+      assert.ok(actions.some(action => action.title === `Disable diagnostic ${code}`))
+      // This is the action invoked by <Plug>(coc-fix-current).
+      await workspace.nvim.call('CocAction', ['doQuickfix'])
+      assert.deepEqual(workspace.getConfiguration('vim').get('diagnostic.disabled'), [code])
+      await waitFor(() => !diagnostics().some(diagnostic => diagnostic.code === code))
+    } finally {
+      await config.update('diagnostic.disabled', original, true)
+    }
   })
 })
