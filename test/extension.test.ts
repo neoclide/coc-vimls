@@ -208,7 +208,8 @@ describe('coc-vimls', () => {
       await config.update('diagnostic.disabled', ['existing'], true)
       // Vim cursor columns are bytes; the provider must compare UTF-16 columns.
       await workspace.nvim.call('cursor', [1, Buffer.byteLength(document.getline(0).slice(0, 23)) + 1])
-      const actions = await workspace.nvim.call('CocAction', ['codeActions', 'line', [CodeActionKind.QuickFix]]) as CodeAction[]
+      // Older Vim versions require g: for global functions called through the Vim9 RPC layer.
+      const actions = await workspace.nvim.call('g:CocAction', ['codeActions', 'line', [CodeActionKind.QuickFix]]) as CodeAction[]
       const fixes = actions.filter(action => action.command?.command === 'vimls.disableDiagnostic')
       assert.equal(fixes.length, 1)
       assert.equal(fixes[0].title, 'Disable diagnostic right')
@@ -216,8 +217,8 @@ describe('coc-vimls', () => {
       assert.deepEqual(workspace.getConfiguration('vim').get('diagnostic.disabled'), ['existing'])
       // Read the configuration when executing, including changes made since the menu opened.
       await config.update('diagnostic.disabled', ['existing', 'added-later'], true)
-      await workspace.nvim.call('CocAction', ['doCodeAction', fixes[0]])
-      await workspace.nvim.call('CocAction', ['doCodeAction', fixes[0]])
+      await workspace.nvim.call('g:CocAction', ['doCodeAction', fixes[0]])
+      await workspace.nvim.call('g:CocAction', ['doCodeAction', fixes[0]])
       assert.deepEqual(workspace.getConfiguration('vim').get('diagnostic.disabled'), ['existing', 'added-later', 'right'])
     } finally {
       await config.update('diagnostic.disabled', original, true)
@@ -234,7 +235,7 @@ describe('coc-vimls', () => {
     ])
     await workspace.nvim.call('cursor', [1, 24])
     const getFixes = async () => {
-      const actions = await workspace.nvim.call('CocAction', ['codeActions', 'cursor', [CodeActionKind.QuickFix]]) as CodeAction[]
+      const actions = await workspace.nvim.call('g:CocAction', ['codeActions', 'cursor', [CodeActionKind.QuickFix]]) as CodeAction[]
       return actions.filter(action => action.command?.command === 'vimls.disableDiagnostic')
     }
     assert.equal((await getFixes())[0]?.title, 'Disable diagnostic containing')
@@ -251,7 +252,7 @@ describe('coc-vimls', () => {
       { code: 'previous-line', source: 'vimls', message: '', range: Range.create(0, 0, 1, 0) },
     ])
     await workspace.nvim.call('cursor', [2, 3])
-    const actions = await workspace.nvim.call('CocAction', ['codeActions', 'line', [CodeActionKind.QuickFix]]) as CodeAction[]
+    const actions = await workspace.nvim.call('g:CocAction', ['codeActions', 'line', [CodeActionKind.QuickFix]]) as CodeAction[]
     assert.equal(actions.filter(action => action.command?.command === 'vimls.disableDiagnostic').length, 0)
   })
 
@@ -270,10 +271,10 @@ describe('coc-vimls', () => {
       const diagnostics = () => diagnosticManager.getDiagnosticsInRange(document.textDocument, Range.create(0, 0, 2, 0))
       await waitFor(() => diagnostics().some(diagnostic => diagnostic.code === code))
       assert.equal(diagnostics().find(diagnostic => diagnostic.code === code)?.severity, 4)
-      const actions = await workspace.nvim.call('CocAction', ['quickfixes', 'currline']) as CodeAction[]
+      const actions = await workspace.nvim.call('g:CocAction', ['quickfixes', 'currline']) as CodeAction[]
       assert.ok(actions.some(action => action.title === `Disable diagnostic ${code}`))
       // This is the action invoked by <Plug>(coc-fix-current).
-      await workspace.nvim.call('CocAction', ['doQuickfix'])
+      await workspace.nvim.call('g:CocAction', ['doQuickfix'])
       assert.deepEqual(workspace.getConfiguration('vim').get('diagnostic.disabled'), [code])
       await waitFor(() => !diagnostics().some(diagnostic => diagnostic.code === code))
     } finally {
