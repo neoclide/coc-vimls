@@ -23,6 +23,8 @@ describe('coc-vimls', () => {
   before(async () => {
     directory = await mkdtemp(join(tmpdir(), 'coc-vimls-'))
     await workspace.nvim.command('enew!')
+    // FileType is ignored while coc.nvim is still creating the document.
+    await workspace.document
     await workspace.nvim.command('setfiletype vim')
     await waitFor(() => services.getService('vimls')?.client?.isRunning() === true)
     client = services.getService('vimls').client!
