@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readdir, rm } from 'node:fs/promises'
+import { mkdtemp, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { after, before, describe, it } from 'node:test'
-import { CodeAction, CodeActionKind, commands, Diagnostic, diagnosticManager, DocumentSymbol, LanguageClient, Range, services, workspace } from 'coc.nvim'
+import { CodeAction, CodeActionKind, commands, Diagnostic, diagnosticManager, DocumentSymbol, LanguageClient, Range, services, Uri, workspace } from 'coc.nvim'
 import { deactivate } from '../src/index.ts'
 import { assetName, cachedServer, installRelease } from '../src/server.ts'
 
@@ -257,16 +257,17 @@ describe('coc-vimls', () => {
   })
 
   it('disables a real pull diagnostic hint through coc-fix-current', async () => {
-    await workspace.nvim.command('enew!')
-    await workspace.nvim.command('setfiletype vim')
-    const document = await workspace.document
     const config = workspace.getConfiguration('vim')
     const original = config.inspect<string[]>('diagnostic.disabled')?.globalValue
     const code = 'vimls/unused-variable'
     try {
       await config.update('diagnostic.disabled', [], true)
-      await document.buffer.setLines(['vim9script', 'var UnusedQuickfix = 1'], { start: 0, end: -1, strictIndexing: false })
-      await document.synchronize()
+      // Open the complete fixture so the initial diagnostic pull sees its content,
+      // without racing an empty buffer's didOpen against configuration and edits.
+      const file = join(directory, 'unused-quickfix.vim')
+      await writeFile(file, 'vim9script\nvar UnusedQuickfix = 1\n')
+      await workspace.openResource(Uri.file(file).toString())
+      const document = await workspace.document
       await workspace.nvim.call('cursor', [2, 8])
       const diagnostics = () => diagnosticManager.getDiagnosticsInRange(document.textDocument, Range.create(0, 0, 2, 0))
       await waitFor(() => diagnostics().some(diagnostic => diagnostic.code === code))
