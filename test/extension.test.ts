@@ -223,11 +223,18 @@ describe('coc-vimls', () => {
     await writeFile(file, content)
     await workspace.openResource(Uri.file(file).toString())
     const document = await workspace.document
+    // A closed fold includes the throwing line outside the selected range.
+    if (!workspace.isNvim) {
+      await workspace.nvim.command('setlocal foldmethod=manual foldenable')
+      await workspace.nvim.command('1,5fold')
+    }
     const result = await commands.executeCommand('vimls.executeSelected', document.uri, Range.create(2, 0, 4, lines[4].length))
     assert.equal(result, `42\n${await realpath(file)}`)
     assert.equal(document.textDocument.getText(), content)
     assert.equal(await readFile(file, 'utf8'), content)
     if (!workspace.isNvim) {
+      assert.equal(await workspace.nvim.call('foldclosed', [3]), 1)
+      await workspace.nvim.command('normal! zE')
       // Native Vim keeps imports and other script-local state for later selections.
       assert.equal(await commands.executeCommand('vimls.executeSelected', document.uri, Range.create(3, 0, 3, lines[3].length)), '42')
     }

@@ -141,8 +141,17 @@ export async function executeVimScript(
     if (await nvim.call('bufnr', ['%']) !== bufnr) {
       throw new Error('Open the selected Vim buffer before executing its lines')
     }
-    const res = await nvim.call('execute', [`vim9cmd :${start},${end}source`])
-    return typeof res === 'string' ? res.trim() : ''
+    const winid = await nvim.call('win_getid', [])
+    const foldenable = await nvim.call('getwinvar', [winid, '&foldenable'])
+    // Vim expands two-address :source ranges to enclosing closed folds.
+    // Disable folding during address evaluation, then restore the same window.
+    await nvim.command(`call setwinvar(${winid}, '&foldenable', 0)`)
+    try {
+      const res = await nvim.call('execute', [`vim9cmd :${start},${end}source`])
+      return typeof res === 'string' ? res.trim() : ''
+    } finally {
+      await nvim.command(`call setwinvar(${winid}, '&foldenable', ${Number(foldenable)})`)
+    }
   }
 
   const tmpDir = await mkdtemp(join(tmpdir(), 'coc-vimls-'))
