@@ -77,6 +77,21 @@ these checks; initial installation and `vimls.update` still work.
 - `Execute selected Vim script`: Available when selecting a nonempty range of Vim script code to execute directly in the running editor.
 
 
+## Executing selections
+
+Legacy Vim script runs in the current editor. In Vim with Vim9 support, complete
+lines of Vim9 script are sourced directly from the current buffer, preserving
+its filename, relative imports and script-local state from previous execution.
+The extension never automatically executes code outside the selection.
+
+In Neovim, Vim9 script runs in a separate system Vim process. File-backed
+selections use the original filename for relative imports and `<sfile>`, without
+reading or modifying the original file. Imports and variables needed by the
+snippet must be included in the selection. This also applies to partial-line
+Vim9 selections in Vim when a filename is available; they run as independent
+snippets to avoid executing the rest of the line. Unnamed standalone snippets
+use a temporary script. `vimls.vimCommand` selects the external Vim executable.
+
 ## Diagnostic rules
 
 Run `:CocCommand vimls.diagnostics` to select a diagnostic from the current file,
