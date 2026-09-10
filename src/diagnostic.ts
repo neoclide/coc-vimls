@@ -66,10 +66,12 @@ async function manageDiagnostics(code?: string): Promise<void> {
 
 export function registerDiagnosticQuickfix(context: ExtensionContext): void {
   context.subscriptions.push(commands.registerCommand('vimls.diagnostics', manageDiagnostics))
-  context.subscriptions.push(commands.registerCommand('vimls.disableDiagnostic', async (code: string) => {
+  context.subscriptions.push(commands.registerCommand('vimls.disableDiagnostic', async (code: string, uri?: string) => {
     if (typeof code !== 'string' || !code) return
-    const config = workspace.getConfiguration('vim')
-    await setDiagnosticRule(config, code, 'disable', ConfigurationTarget.Global)
+    const config = workspace.getConfiguration('vim', uri)
+    const target = Array.isArray(config.inspect<string[]>('diagnostic.disabled')?.workspaceFolderValue)
+      ? ConfigurationTarget.WorkspaceFolder : ConfigurationTarget.Global
+    await setDiagnosticRule(config, code, 'disable', target)
   }, undefined, true))
 
   context.subscriptions.push(languages.registerCodeActionProvider(
@@ -80,7 +82,8 @@ export function registerDiagnosticQuickfix(context: ExtensionContext): void {
         if (current.uri !== document.uri) return []
         const position = await window.getCursorPosition()
         if (token.isCancellationRequested) return []
-        const disabled = workspace.getConfiguration('vim', document.uri).get<string[]>('diagnostic.disabled', [])
+        const config = workspace.getConfiguration('vim', document.uri)
+        const disabled = config.get<string[]>('diagnostic.disabled', [])
         let nearest: Diagnostic | undefined
         let distance = Infinity
         const lineRange = Range.create(position.line, 0, position.line, current.getline(position.line).length)
@@ -101,12 +104,13 @@ export function registerDiagnosticQuickfix(context: ExtensionContext): void {
         }
         if (!nearest) return []
         const code = String(nearest.code)
-        const title = `Disable diagnostic ${code}`
+        const project = Array.isArray(config.inspect<string[]>('diagnostic.disabled')?.workspaceFolderValue)
+        const title = `Disable diagnostic ${code}${project ? ' in project' : ''}`
         return [{
           title,
           kind: CodeActionKind.QuickFix,
           diagnostics: [nearest],
-          command: { title, command: 'vimls.disableDiagnostic', arguments: [code] },
+          command: { title, command: 'vimls.disableDiagnostic', arguments: [code, document.uri] },
         }]
       },
     },
