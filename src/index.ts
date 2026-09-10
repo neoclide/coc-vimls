@@ -62,10 +62,9 @@ export async function activate(context: ExtensionContext): Promise<void> {
       context.subscriptions.push(services.registerLanguageClient(current))
     }
   }
-  // Installation, restart and rollback share one operation to avoid stopping
-  // a process while another command is changing its executable.
+  // Reject overlapping operations instead of silently dropping a different command.
   const operate = (operation: () => Promise<void>): Promise<void> => {
-    if (updating) return updating
+    if (updating) return Promise.reject(new Error('Another vimls operation is in progress; retry when it finishes.'))
     updating = operation().catch(error => {
       lastError = error instanceof Error ? error.message : String(error)
       current.outputChannel.appendLine(`vimls-go: ${lastError}`)
