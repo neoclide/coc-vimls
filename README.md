@@ -46,7 +46,9 @@ without reloading the extension.
 Checks the latest GitHub release and installs it if needed, then restarts the
 language service. Failed downloads or checksum checks preserve the previous
 installation and running service. After a successful installation, only the current
-version and one previous version are retained in extension storage.
+version and one previous version are retained in extension storage. If the new
+server fails to start, the extension restores the previous binary and restarts it.
+Use `:CocCommand vimls.rollback` to return to the previous installation manually.
 
 When `vimls.command` is configured, the command explains that the custom executable
 must be updated manually. Clear that setting and reload the extension to return
@@ -60,6 +62,7 @@ The extension automatically checks for new releases once a week in the backgroun
 ## Commands
 
 - `vimls.update`: Check the latest GitHub release and install it if needed, then restart the language service.
+- `vimls.rollback`: Switch back to the previous managed installation and restart. Unavailable for custom executables.
 - `vimls.restart`: Restart the `vimls-go` language server.
 - `vimls.doctor`: Display health information, binary details, versions, and active runtimepath entries in the output channel.
 - `vimls.openOutput`: Open the `vimls` output channel.

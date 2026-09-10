@@ -7,7 +7,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import { CodeAction, CodeActionKind, commands, Diagnostic, diagnosticManager, DocumentSymbol, ExtensionContext, LanguageClient, Range, services, Uri, window, workspace } from 'coc.nvim'
 import { activate, deactivate } from '../src/index.ts'
-import { assetName, cachedServer, installRelease } from '../src/server.ts'
+import { assetName, cachedServer, installRelease, previousServer, selectServer } from '../src/server.ts'
 
 async function waitFor(check: () => boolean): Promise<void> {
   const deadline = Date.now() + 15000
@@ -136,6 +136,12 @@ describe('coc-vimls', () => {
       const retained = [basename(dirname(second)), basename(dirname(third)), 'current', 'unrelated'].sort()
       assert.deepEqual((await readdir(storage)).sort(), retained)
       assert.equal(await cachedServer(storage), third)
+      assert.equal(await previousServer(storage), second)
+      await selectServer(storage, second)
+      assert.equal(await cachedServer(storage), second)
+      assert.equal(await previousServer(storage), third)
+      await selectServer(storage, third)
+      await assert.rejects(selectServer(storage, join(directory, 'outside', 'vimls')), /Invalid managed server path/)
       checksum = '0'.repeat(64)
       await assert.rejects(installRelease(storage, { ...release, tag_name: 'v4.0.0' }), /SHA-256 mismatch/)
       assert.equal(await cachedServer(storage), third)
@@ -154,6 +160,7 @@ describe('coc-vimls', () => {
 
   it('supports restart, openOutput, and doctor commands', async t => {
     const show = t.mock.method(client.outputChannel, 'show', () => {})
+    assert.equal(commands.has('vimls.rollback'), true)
     assert.equal(commands.has('vimls.restart'), true)
     assert.equal(commands.has('vimls.openOutput'), true)
     assert.equal(commands.has('vimls.doctor'), true)
