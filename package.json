@@ -21,7 +21,8 @@
     "onCommand:vimls.restart",
     "onCommand:vimls.doctor",
     "onCommand:vimls.openOutput",
-    "onCommand:vimls.executeSelected"
+    "onCommand:vimls.executeSelected",
+    "onCommand:vimls.rollback"
   ],
   "contributes": {
     "configuration": {
@@ -125,6 +126,10 @@
       {
         "command": "vimls.executeSelected",
         "title": "Execute selected Vim script"
+      },
+      {
+        "command": "vimls.rollback",
+        "title": "Restore the previous vimls-go installation"
       }
     ]
   },

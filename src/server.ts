@@ -104,3 +104,30 @@ export async function ensureServer(storage: string, update = false): Promise<str
   if (cached && await readFile(join(cached, '..', 'version'), 'utf8') === release.tag_name) return cached
   return installRelease(storage, release)
 }
+
+/** The installer retains at most one previous complete installation. */
+export async function previousServer(storage: string): Promise<string | undefined> {
+  const current = await cachedServer(storage)
+  if (!current) return
+  for (const entry of await readdir(storage, { withFileTypes: true })) {
+    if (!entry.isDirectory() || !/^server-[a-zA-Z0-9]+$/.test(entry.name)) continue
+    const binary = join(storage, entry.name, process.platform === 'win32' ? 'vimls.exe' : 'vimls')
+    if (binary === current) continue
+    try {
+      await access(binary, process.platform === 'win32' ? constants.F_OK : constants.X_OK)
+      await readFile(join(storage, entry.name, 'version'), 'utf8')
+      return binary
+    } catch { /* Incomplete installations are not rollback candidates. */ }
+  }
+}
+
+export async function selectServer(storage: string, binary: string): Promise<void> {
+  const directory = dirname(binary)
+  if (dirname(directory) !== storage || !/^server-[a-zA-Z0-9]+$/.test(basename(directory))) {
+    throw new Error('Invalid managed server path')
+  }
+  await access(binary, process.platform === 'win32' ? constants.F_OK : constants.X_OK)
+  const marker = join(directory, 'current')
+  await writeFile(marker, basename(directory))
+  await rename(marker, join(storage, 'current'))
+}

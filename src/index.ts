@@ -1,7 +1,8 @@
 import { CodeAction, CodeActionKind, CodeActionProvider, commands, ExtensionContext, LanguageClient, languages, Range, services, window, workspace } from 'coc.nvim'
-import { cachedServer, ensureServer, installedVersion, latestRelease } from './server'
+import { cachedServer, ensureServer, installedVersion, latestRelease, previousServer, selectServer } from './server'
 import { executeVimScript, isVim9 } from './execute'
 import { registerDiagnosticQuickfix } from './diagnostic'
+import { switchServer } from './lifecycle'
 
 let client: LanguageClient | undefined
 let updating: Promise<void> | undefined
@@ -62,7 +63,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       context.subscriptions.push(services.registerLanguageClient(current))
     }
   }
-  // Installation and restart share one operation to avoid stopping
+  // Installation, restart and rollback share one operation to avoid stopping
   // a process while another command is changing its executable.
   const operate = (operation: () => Promise<void>): Promise<void> => {
     if (updating) return updating
@@ -91,12 +92,21 @@ export async function activate(context: ExtensionContext): Promise<void> {
     if (!managed()) return
     return operate(async () => {
       const command = await window.withProgress({ title: 'Updating vimls-go' }, () => ensureServer(context.storagePath, true))
-      await current.stop()
-      serverOptions.command = command
-      await current.start()
+      await switchServer(current, serverOptions, command, binary => selectServer(context.storagePath, binary))
       register()
       lastError = ''
       await window.showInformationMessage('vimls-go is up to date.')
+    })
+  }))
+  context.subscriptions.push(commands.registerCommand('vimls.rollback', () => {
+    if (!managed()) return
+    return operate(async () => {
+      const command = await previousServer(context.storagePath)
+      if (!command) throw new Error('No previous managed installation is available')
+      await switchServer(current, serverOptions, command, binary => selectServer(context.storagePath, binary))
+      register()
+      lastError = ''
+      await window.showInformationMessage('Previous vimls-go installation restored.')
     })
   }))
   context.subscriptions.push(commands.registerCommand('vimls.restart', () => operate(async () => {
@@ -184,7 +194,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     const version = await installedVersion(context.storagePath)
     channel.appendLine(`Installed Version: ${version || (customCmd ? 'custom' : 'none')}`)
     channel.appendLine(`Last Error: ${lastError || 'none'}`)
-    channel.appendLine('Recovery: vimls.restart retries installation/startup; vimls.update installs the latest release.')
+    channel.appendLine('Recovery: vimls.restart retries installation/startup; vimls.update installs the latest release; vimls.rollback restores the previous release.')
     channel.appendLine(`Platform: ${process.platform} (${process.arch})`)
     channel.appendLine(`Trace Level: ${workspace.getConfiguration('vimls').get<string>('trace.server', 'off')}`)
     const configFiles = workspace.getConfiguration('vim').get<string[]>('configFiles', [])
