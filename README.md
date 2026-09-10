@@ -61,6 +61,39 @@ The extension checks for new releases once a week in the background and notifies
 you when an update is available. Set `vimls.checkForUpdates` to `false` to disable
 these checks; initial installation and `vimls.update` still work.
 
+## Using language features
+
+These features use coc.nvim's built-in actions. Availability depends on the
+installed vimls-go version; the extension does not need separate commands for
+standard LSP features.
+
+For an action name in the table, run `:call CocActionAsync('actionName')` or use
+your existing coc.nvim mapping.
+
+| Feature | How to use it |
+| --- | --- |
+| Completion | Type in a Vim buffer; coc.nvim requests suggestions automatically. |
+| Hover / signature help | `doHover` / `showSignatureHelp` |
+| Definition / references | `jumpDefinition` / `jumpReferences` |
+| Type definition / implementation | `jumpTypeDefinition` / `jumpImplementation` |
+| File / workspace symbols | `:CocList outline` / `:CocList symbols` |
+| Rename | `rename`; edits resolved references across files. |
+| Format indentation | `format`, or `:call CocActionAsync('formatSelected', visualmode())` for a selection. |
+| Incoming / outgoing calls | `showIncomingCalls` / `showOutgoingCalls` |
+| Parent / child types | `showSuperTypes` / `showSubTypes` |
+| Fold code | `fold` |
+| Expand a selection | Select text, then `:call CocActionAsync('rangeSelect', visualmode(), v:true)`; use `v:false` to shrink it. |
+| Quickfixes | `:call CocActionAsync('codeAction', 'cursor')` shows applicable server fixes and the diagnostic-disable action. |
+| CodeLens references | Enable `codeLens.enable`, then run `codeLensAction` on the function or type declaration. |
+
+Semantic highlighting and inlay hints use coc.nvim's `semanticTokens.enable`
+and `inlayHint.enable` settings. Their display depends on editor support and the
+current theme. Server-provided fixes depend on the diagnostic; the extension
+also contributes the two actions described below.
+
+File creation, changes and deletion are synchronized through the server's LSP
+file-watcher registrations. Runtimepath changes are synchronized separately.
+
 ## Commands
 
 - `vimls.update`: Check the latest GitHub release and install it if needed, then restart the language service.
@@ -74,7 +107,7 @@ these checks; initial installation and `vimls.update` still work.
 ## Code Actions
 
 - `Disable diagnostic <code>`: A quickfix for the vimls diagnostic nearest the cursor on the current line. Adds its code to the user setting `vim.diagnostic.disabled`, preserving existing entries. Suppresses that diagnostic code across files.
-- `Execute selected Vim script`: Available when selecting a nonempty range of Vim script code to execute directly in the running editor.
+- `Execute selected Vim script`: Execute a nonempty selection using the editor or system Vim as described below.
 
 
 ## Executing selections
@@ -82,6 +115,7 @@ these checks; initial installation and `vimls.update` still work.
 Legacy Vim script runs in the current editor. In Vim with Vim9 support, complete
 lines of Vim9 script are sourced directly from the current buffer, preserving
 its filename, relative imports and script-local state from previous execution.
+Closed folds do not expand the execution range, and folding is restored afterward.
 The extension never automatically executes code outside the selection.
 
 In Neovim, Vim9 script runs in a separate system Vim process. File-backed
@@ -89,8 +123,8 @@ selections use the original filename for relative imports and `<sfile>`, without
 reading or modifying the original file. Imports and variables needed by the
 snippet must be included in the selection. This also applies to partial-line
 Vim9 selections in Vim when a filename is available; they run as independent
-snippets to avoid executing the rest of the line. Unnamed standalone snippets
-use a temporary script. `vimls.vimCommand` selects the external Vim executable.
+snippets to avoid executing the rest of the line. Partial-line snippets from
+unnamed buffers use a temporary script. `vimls.vimCommand` selects the external Vim executable.
 
 ## Diagnostic rules
 
@@ -116,7 +150,7 @@ Set options in `:CocConfig`:
 | `vimls.checkForUpdates` | `true` | Check for releases weekly in the background. |
 | `vimls.command` | `""` | Custom executable path; empty uses managed GitHub releases. Reload after changing. |
 | `vimls.args` | `[]` | Server arguments; retain stdio transport. Reload after changing. |
-| `vimls.vimCommand` | `"vim"` | Path to system vim executable for executing Vim9 script in Neovim. |
+| `vimls.vimCommand` | `"vim"` | Path to system Vim for external Vim9 execution, including Neovim and partial-line snippets. |
 | `vim.configFiles` | `[]` | Absolute paths/globs, including `~/`, treated as user configuration files. Restart the server after changing. |
 | `vim.workspace.rebuildDebounce` | `100` | Workspace rebuild delay in milliseconds. |
 | `vim.suggest.excludeRuntimePath` | `false` | Exclude completion items from runtime files outside the workspace. |
@@ -155,4 +189,14 @@ npm pack --dry-run
 
 Alternatively set `VIMLS_TEST_BIN` to a directory containing `vimls`.
 Tests load TypeScript source through coc-test and exercise a real server in both
-editors. Download tests use a local HTTP fixture and do not access GitHub. CI pins the server source used for local integration.
+editors. Download tests use a local HTTP fixture and do not access GitHub.
+The suite covers installation recovery, rollback, configuration scope, selection
+execution and the registered completion, navigation, rename, formatting and
+CodeLens providers. Watcher tests inject file events into coc.nvim's registered
+watchers and verify real-server index updates; they do not require watchman or
+validate OS event delivery. CI pins the server source used for integration.
+
+Tests open complete file fixtures and await requests or observable state changes.
+They avoid popup interaction, fixed startup sleeps and public release endpoints.
+The coc-test runner may still need network access to obtain coc.nvim on a clean
+machine; supply a local server as shown above.

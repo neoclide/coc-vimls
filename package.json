@@ -56,7 +56,7 @@
         "vimls.vimCommand": {
           "type": "string",
           "default": "vim",
-          "description": "Path to system vim executable for executing Vim9 script in Neovim."
+          "description": "Path to system Vim for external Vim9 execution, including Neovim and partial-line snippets."
         },
         "vim.configFiles": {
           "type": "array",

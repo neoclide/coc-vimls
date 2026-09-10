@@ -119,7 +119,9 @@ export interface ExecuteOptions {
  * Execute Vim script text.
  * For legacy Vim script, executes in the current editor session.
  * For Vim9 script in Neovim (or Vim without vim9script support), runs with system Vim.
- * For Vim9 script in Vim (with vim9script support), sources the script via a temp file.
+ * In Vim, complete Vim9 lines use the original buffer; named partial snippets
+ * use system Vim with the original filename. Standalone unnamed snippets use
+ * a temporary script.
  */
 export async function executeVimScript(
   nvim: any,
