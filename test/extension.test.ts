@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import { CodeAction, CodeActionKind, commands, Diagnostic, diagnosticManager, DocumentSymbol, ExtensionContext, LanguageClient, Range, services, Uri, window, workspace } from 'coc.nvim'
-import { activate, deactivate } from '../src/index.ts'
+import { activate, checkWeeklyUpdate, deactivate } from '../src/index.ts'
 import { assetName, cachedServer, installRelease, previousServer, selectServer } from '../src/server.ts'
 
 async function waitFor(check: () => boolean): Promise<void> {
@@ -304,6 +304,23 @@ describe('coc-vimls', () => {
       await config.update('diagnostic.disabled', original, true)
     }
   })
+  it('skips background checks when disabled without advancing the check date', async () => {
+    const config = workspace.getConfiguration('vimls')
+    const command = config.get<string>('command')
+    const enabled = config.inspect<boolean>('checkForUpdates')?.globalValue
+    const context = {
+      globalState: { get() { assert.fail('disabled check must not read or change its schedule') } },
+    } as unknown as ExtensionContext
+    try {
+      await config.update('command', '', true)
+      await config.update('checkForUpdates', false, true)
+      await checkWeeklyUpdate(context)
+    } finally {
+      await config.update('command', command, true)
+      await config.update('checkForUpdates', enabled, true)
+    }
+  })
+
   it('keeps doctor and retry available after a first-install failure', async t => {
     await deactivate()
     const config = workspace.getConfiguration('vimls')

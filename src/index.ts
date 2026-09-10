@@ -9,8 +9,9 @@ let updating: Promise<void> | undefined
 let active = false
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
-async function checkWeeklyUpdate(context: ExtensionContext): Promise<void> {
-  if (workspace.getConfiguration('vimls').get<string>('command', '')) return
+export async function checkWeeklyUpdate(context: ExtensionContext): Promise<void> {
+  const config = workspace.getConfiguration('vimls')
+  if (!config.get<boolean>('checkForUpdates', true) || config.get<string>('command', '')) return
   const lastCheck = context.globalState.get<number>('last_update_check', 0)
   const now = Date.now()
   if (now - lastCheck < ONE_WEEK_MS) return
@@ -18,12 +19,12 @@ async function checkWeeklyUpdate(context: ExtensionContext): Promise<void> {
     const release = await latestRelease()
     const currentVer = await installedVersion(context.storagePath)
     await context.globalState.update('last_update_check', now)
-    if (active && currentVer && currentVer !== release.tag_name) {
+    if (active && workspace.getConfiguration('vimls').get<boolean>('checkForUpdates', true) && currentVer && currentVer !== release.tag_name) {
       const item = await window.showInformationMessage(
         `A new vimls-go release (${release.tag_name}) is available. Current version: ${currentVer}.`,
         'Update now'
       )
-      if (item === 'Update now') {
+      if (active && item === 'Update now') {
         await commands.executeCommand('vimls.update')
       }
     }
