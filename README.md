@@ -64,7 +64,7 @@ The extension automatically checks for new releases once a week in the backgroun
 - `vimls.update`: Check the latest GitHub release and install it if needed, then restart the language service.
 - `vimls.rollback`: Switch back to the previous managed installation and restart. Unavailable for custom executables.
 - `vimls.restart`: Restart the `vimls-go` language server.
-- `vimls.doctor`: Display health information, binary details, versions, and active runtimepath entries in the output channel.
+- `vimls.doctor`: Display the running binary and server-reported version, startup arguments, last error, managed cache details, and active runtimepath entries in the output channel.
 - `vimls.openOutput`: Open the `vimls` output channel.
 - `vimls.executeSelected`: Execute the currently selected Vim script lines (also exposed as a Code Action for nonempty visual selections). Automatically distinguishes between Vim9 script and legacy Vim script, executing Vim9 script with system Vim when running in Neovim.
 

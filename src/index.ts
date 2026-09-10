@@ -40,8 +40,6 @@ export async function activate(context: ExtensionContext): Promise<void> {
   let runtimepath = workspace.env.runtimepath.split(',')
   let lastError = ''
   let registered = false
-  const channel = window.createOutputChannel('vimls')
-  context.subscriptions.push(channel)
   const current = new LanguageClient('vimls', 'vimls-go', serverOptions, {
     documentSelector: [{ language: 'vim', scheme: 'file' }, { language: 'vim', scheme: 'untitled' }],
     initializationOptions: () => ({
@@ -49,7 +47,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
       configFiles: workspace.getConfiguration('vim').get<string[]>('configFiles', []),
     }),
     synchronize: { configurationSection: 'vim' },
-    outputChannel: channel,
+    outputChannelName: 'vimls',
     initializationFailedHandler: error => {
       lastError = String(error)
       return false
@@ -69,7 +67,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
     if (updating) return updating
     updating = operation().catch(error => {
       lastError = error instanceof Error ? error.message : String(error)
-      channel.appendLine(`vimls-go: ${lastError}`)
+      current.outputChannel.appendLine(`vimls-go: ${lastError}`)
       void window.showErrorMessage(`vimls-go: ${lastError}. Use vimls.doctor for details and vimls.restart to retry.`)
       throw error
     }).finally(() => { updating = undefined })
@@ -184,15 +182,23 @@ export async function activate(context: ExtensionContext): Promise<void> {
   ))
 
   context.subscriptions.push(commands.registerCommand('vimls.doctor', async () => {
+    const channel = current.outputChannel
     channel.appendLine('')
     channel.appendLine('=== vimls-go Doctor ===')
     channel.appendLine(`Status: ${client?.isRunning() ? 'running' : 'stopped'}`)
     const customCmd = workspace.getConfiguration('vimls').get<string>('command', '')
     channel.appendLine(`Custom Command: ${customCmd ? customCmd : '(none, using managed release)'}`)
-    const binary = customCmd || (await cachedServer(context.storagePath)) || 'not found'
-    channel.appendLine(`Binary: ${binary}`)
-    const version = await installedVersion(context.storagePath)
-    channel.appendLine(`Installed Version: ${version || (customCmd ? 'custom' : 'none')}`)
+    channel.appendLine(`Mode: ${customCommand ? 'custom executable' : 'managed release'}`)
+    channel.appendLine(`Selected Binary: ${serverOptions.command || 'not installed'}`)
+    channel.appendLine(`Running Binary: ${current.isRunning() ? serverOptions.command : 'not running'}`)
+    channel.appendLine(`Running Version: ${current.isRunning() ? current.initializeResult?.serverInfo?.version || 'not reported by server' : 'not running'}`)
+    channel.appendLine(`Arguments: ${JSON.stringify(serverOptions.args)}`)
+    try {
+      channel.appendLine(`Managed Cache Binary: ${(await cachedServer(context.storagePath)) || 'none'}`)
+      channel.appendLine(`Managed Cache Version: ${(await installedVersion(context.storagePath)) || 'none'}${customCommand ? ' (not used by custom server)' : ''}`)
+    } catch (error) {
+      channel.appendLine(`Managed Cache Error: ${String(error)}`)
+    }
     channel.appendLine(`Last Error: ${lastError || 'none'}`)
     channel.appendLine('Recovery: vimls.restart retries installation/startup; vimls.update installs the latest release; vimls.rollback restores the previous release.')
     channel.appendLine(`Platform: ${process.platform} (${process.arch})`)

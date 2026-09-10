@@ -174,6 +174,25 @@ describe('coc-vimls', () => {
     assert.equal(client.isRunning(), true)
   })
 
+  it('reports the running server instead of a pending command configuration', async t => {
+    const lines: string[] = []
+    t.mock.method(client.outputChannel, 'appendLine', (line: string) => lines.push(line))
+    t.mock.method(client.outputChannel, 'show', () => {})
+    const config = workspace.getConfiguration('vimls')
+    const original = config.get<string>('command')
+    try {
+      await config.update('command', 'pending-after-reload', true)
+      await commands.executeCommand('vimls.doctor')
+      assert.ok(lines.includes(`Running Binary: ${original}`))
+      assert.ok(lines.includes(`Running Version: ${client.initializeResult!.serverInfo!.version}`))
+      assert.ok(lines.includes('Custom Command: pending-after-reload'))
+      assert.ok(lines.includes('Arguments: []'))
+      assert.ok(lines.some(line => line.startsWith('Managed Cache Version:') && line.endsWith('(not used by custom server)')))
+    } finally {
+      await config.update('command', original, true)
+    }
+  })
+
   it('provides codeAction for nonempty range and executes selected Vim script', async () => {
     const document = await workspace.document
     await document.buffer.setLines(['let g:coc_vimls_tested = 100'], { start: 0, end: -1, strictIndexing: false })
