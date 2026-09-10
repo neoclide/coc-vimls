@@ -1,3 +1,8 @@
+## 0.0.4
+
+- fix failure test (9d40140)
+- fix failure test (20ff5f2)
+
 ## 0.0.3
 
 - fix test failure (a2815f8)
