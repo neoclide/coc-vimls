@@ -5,13 +5,13 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { after, before, describe, it } from 'node:test'
-import { CodeAction, CodeActionKind, commands, Diagnostic, diagnosticManager, DocumentSymbol, ExtensionContext, LanguageClient, Range, services, Uri, window, workspace } from 'coc.nvim'
+import { CancellationToken, CodeAction, CodeActionKind, commands, CompletionContext, Diagnostic, diagnosticManager, DocumentSymbol, Emitter, ExtensionContext, LanguageClient, Position, Range, services, Uri, window, workspace } from 'coc.nvim'
 import { activate, checkWeeklyUpdate, deactivate } from '../src/index.ts'
 import { assetName, cachedServer, installRelease, previousServer, selectServer } from '../src/server.ts'
 
-async function waitFor(check: () => boolean): Promise<void> {
+async function waitFor(check: () => boolean | Promise<boolean>): Promise<void> {
   const deadline = Date.now() + 15000
-  while (!check()) {
+  while (!await check()) {
     if (Date.now() > deadline) throw new Error('Timed out waiting for vimls-go')
     await new Promise(resolve => setTimeout(resolve, 20))
   }
@@ -341,6 +341,123 @@ describe('coc-vimls', () => {
       await config.update('diagnostic.disabled', original, true)
     }
   })
+  describe('registered language features', () => {
+    let root: string
+    const token = CancellationToken.None
+    const open = async (name: string) => {
+      await workspace.openResource(Uri.file(join(root, name)).toString())
+      return workspace.document
+    }
+    before(async () => {
+      root = join(directory, 'language-features')
+      await mkdir(root)
+      await writeFile(join(root, 'lib.vim'), 'vim9script\nexport def Target(): number\n  return 42\nenddef\n')
+      await writeFile(join(root, 'consumer.vim'), "vim9script\nimport './lib.vim' as lib\necho lib.Target()\n")
+      await writeFile(join(root, 'completion.vim'), 'call strl\n')
+      await writeFile(join(root, 'format.vim'), 'vim9script\ndef Example()\necho 1\nenddef\n')
+      await client.sendRequest('vimls/didChangeRuntimepath', { runtimepath: [root] })
+    })
+    after(async () => {
+      await client.sendRequest('vimls/didChangeRuntimepath', { runtimepath: workspace.env.runtimepath.split(',') })
+    })
+
+    it('provides completion through the registered coc provider', async () => {
+      const document = (await open('completion.vim')).textDocument
+      const provider = client.getFeature('textDocument/completion').getProvider(document)!
+      const result = await provider.provideCompletionItems(document, Position.create(0, 9), token, { triggerKind: 1 } as CompletionContext)
+      const items = Array.isArray(result) ? result : result?.items
+      assert.ok(items?.some(item => item.label === 'strlen'))
+    })
+
+    it('resolves cross-file definitions and executes the CodeLens reference command', async t => {
+      const library = await open('lib.vim')
+      const consumer = await open('consumer.vim')
+      const definition = client.getFeature('textDocument/definition').getProvider(consumer.textDocument)!
+      const result = await definition.provideDefinition(consumer.textDocument, Position.create(2, 11), token)
+      const targets = Array.isArray(result) ? result : result ? [result] : []
+      const targetPaths = await Promise.all(targets.map(target => realpath(Uri.parse('targetUri' in target ? target.targetUri : target.uri).fsPath)))
+      assert.ok(targetPaths.includes(await realpath(Uri.parse(library.uri).fsPath)), JSON.stringify(targets))
+
+      const provider = client.getFeature('textDocument/codeLens').getProvider(library.textDocument)!.provider!
+      const lenses = await provider.provideCodeLenses(library.textDocument, token)
+      const lens = lenses?.find(lens => lens.range.start.line === 1)
+      assert.ok(lens)
+      const resolved = await provider.resolveCodeLens!(lens, token)
+      assert.equal(resolved?.command?.title, '1 reference')
+      const locations = t.mock.method(workspace, 'showLocations', async () => {})
+      const command = resolved!.command!
+      await commands.executeCommand(command.command, ...command.arguments!)
+      const refs = locations.mock.calls[0].arguments[0]
+      assert.ok(refs)
+      assert.equal(refs.length, 1)
+      assert.equal(await realpath(Uri.parse(refs[0].uri).fsPath), await realpath(Uri.parse(consumer.uri).fsPath))
+      assert.equal(await realpath(Uri.parse((await workspace.document).uri).fsPath), await realpath(Uri.parse(library.uri).fsPath))
+    })
+
+    it('applies cross-file rename edits to both editor buffers', async () => {
+      const library = await open('lib.vim')
+      const consumer = await open('consumer.vim')
+      const provider = client.getFeature('textDocument/rename').getProvider(library.textDocument)!
+      const edit = await provider.provideRenameEdits(library.textDocument, Position.create(1, 12), 'RenamedTarget', token)
+      assert.ok(edit)
+      assert.equal(await workspace.applyEdit(edit), true)
+      assert.ok(library.textDocument.getText().includes('export def RenamedTarget()'))
+      assert.ok(consumer.textDocument.getText().includes('lib.RenamedTarget()'))
+    })
+
+    it('applies indentation formatting to an editor buffer', async () => {
+      const document = await open('format.vim')
+      const provider = client.getFeature('textDocument/formatting').getProvider(document.textDocument)!
+      const edits = await provider.provideDocumentFormattingEdits(document.textDocument, { tabSize: 2, insertSpaces: true }, token)
+      assert.ok(edits?.length)
+      await document.applyEdits(edits)
+      assert.equal(document.getline(2), '  echo 1')
+    })
+
+    it('forwards registered watcher events and refreshes unopened files', async t => {
+      const watchRoot = join(root, 'watched-runtime')
+      await mkdir(watchRoot)
+      const folder = { uri: Uri.file(watchRoot).toString(), name: 'watched-runtime' }
+      let events: { create: Emitter<Uri>; change: Emitter<Uri>; delete: Emitter<Uri> } | undefined
+      // Exercise dynamic registration and notification forwarding without requiring
+      // watchman or relying on OS-specific filesystem event timing.
+      const watcher = t.mock.method(workspace, 'createFileSystemWatcher', (pattern: any) => {
+        const create = new Emitter<Uri>()
+        const change = new Emitter<Uri>()
+        const deleted = new Emitter<Uri>()
+        const renamed = new Emitter<any>()
+        if (JSON.stringify(pattern).includes('watched-runtime')) events = { create, change, delete: deleted }
+        return {
+          ignoreCreateEvents: false, ignoreChangeEvents: false, ignoreDeleteEvents: false,
+          onDidCreate: create.event, onDidChange: change.event, onDidDelete: deleted.event, onDidRename: renamed.event,
+          dispose() { create.dispose(); change.dispose(); deleted.dispose(); renamed.dispose() },
+        }
+      })
+      const symbols = () => client.sendRequest<any[]>('workspace/symbol', { query: 'WatchFixture' })
+      try {
+        await client.sendNotification('workspace/didChangeWorkspaceFolders', { event: { added: [folder], removed: [] } })
+        await waitFor(() => Boolean(events))
+        const file = join(watchRoot, 'watched.vim')
+        const uri = Uri.file(file)
+        await writeFile(file, 'function! WatchFixtureBefore()\nendfunction\n')
+        events!.create.fire(uri)
+        await waitFor(async () => (await symbols()).some(symbol => symbol.name === 'WatchFixtureBefore'))
+        await writeFile(file, 'function! WatchFixtureAfter()\nendfunction\n')
+        events!.change.fire(uri)
+        await waitFor(async () => {
+          const items = await symbols()
+          return items.some(symbol => symbol.name === 'WatchFixtureAfter') && !items.some(symbol => symbol.name === 'WatchFixtureBefore')
+        })
+        await rm(file)
+        events!.delete.fire(uri)
+        await waitFor(async () => (await symbols()).length === 0)
+      } finally {
+        watcher.mock.restore()
+        await client.sendNotification('workspace/didChangeWorkspaceFolders', { event: { added: [], removed: [folder] } })
+      }
+    })
+  })
+
   it('skips background checks when disabled without advancing the check date', async () => {
     const config = workspace.getConfiguration('vimls')
     const command = config.get<string>('command')
