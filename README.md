@@ -68,6 +68,7 @@ these checks; initial installation and `vimls.update` still work.
 - `vimls.restart`: Restart the `vimls-go` language server.
 - `vimls.doctor`: Display the running binary and server-reported version, startup arguments, last error, managed cache details, and active runtimepath entries in the output channel.
 - `vimls.openOutput`: Open the `vimls` output channel.
+- `vimls.diagnostics`: Enable or disable diagnostic codes and edit severity overrides in user or current project settings.
 - `vimls.executeSelected`: Execute the currently selected Vim script lines (also exposed as a Code Action for nonempty visual selections). Automatically distinguishes between Vim9 script and legacy Vim script, executing Vim9 script with system Vim when running in Neovim.
 
 ## Code Actions
@@ -75,6 +76,20 @@ these checks; initial installation and `vimls.update` still work.
 - `Disable diagnostic <code>`: A quickfix for the vimls diagnostic nearest the cursor on the current line. Adds its code to the user setting `vim.diagnostic.disabled`, preserving existing entries. Suppresses that diagnostic code across files.
 - `Execute selected Vim script`: Available when selecting a nonempty range of Vim script code to execute directly in the running editor.
 
+
+## Diagnostic rules
+
+Run `:CocCommand vimls.diagnostics` to select a diagnostic from the current file,
+a disabled rule or an existing severity override. You can also enter a code.
+Choose user settings or the current project's `.vim/coc-settings.json`, then
+choose the action. The project option is available when coc.nvim has a workspace
+folder for its current root. The language server uses one set of settings for the
+workspace; this is not per-buffer suppression.
+
+Enabling a rule removes it from that scope's disabled list. Severity changes do
+not re-enable disabled rules. Removing a project severity override restores the
+inherited user setting, if any. The existing quickfix still disables the nearest
+diagnostic globally in one action.
 
 ## Settings
 
