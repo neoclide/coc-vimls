@@ -76,6 +76,7 @@ export function runSystemVim(
     const sourceArgs = sourcePath ? [
       '-c', `silent execute 'file ' . fnameescape(${expression(sourcePath)})`,
       '-c', `call setline(1, readfile(${expression(scriptPath)}))`,
+      '-c', 'setlocal buftype=nofile noswapfile',
       '-c', '%source',
     ] : ['-S', scriptPath]
     const cp = spawn(vimBin, ['-u', 'NONE', '-i', 'NONE', '-N', '-es', '-V1', ...sourceArgs, '-c', 'qall!'])

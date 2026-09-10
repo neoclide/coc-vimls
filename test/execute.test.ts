@@ -109,6 +109,21 @@ describe('Vim execution utilities', () => {
       assert.equal(calls[0].args[0][0], 'let g:x = 1')
     })
 
+    it('does not let an implicit write overwrite the original file with a snippet', async () => {
+      const directory = await mkdtemp(join(tmpdir(), 'vimls-write-'))
+      const original = join(directory, 'original.vim')
+      const content = 'vim9script\nvar Important = 123\n'
+      try {
+        await writeFile(original, content)
+        await assert.rejects(executeVimScript({}, 'write!', true, {
+          isNvim: true, sourcePath: original,
+        }), /E382/)
+        assert.equal(await readFile(original, 'utf8'), content)
+      } finally {
+        await rm(directory, { recursive: true, force: true })
+      }
+    })
+
     it('preserves relative imports and the source filename without executing the file', async () => {
       const directory = await mkdtemp(join(tmpdir(), "vimls context ' 中文 "))
       const original = join(directory, 'original.vim')
