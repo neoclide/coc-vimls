@@ -103,6 +103,11 @@
           "default": 1000,
           "description": "Maximum diagnostics per document, including the truncation marker.",
           "minimum": 1
+        },
+        "vimls.checkForUpdates": {
+          "type": "boolean",
+          "default": true,
+          "description": "Check for vimls-go releases in the background once a week. Does not affect manual updates or initial installation."
         }
       }
     },

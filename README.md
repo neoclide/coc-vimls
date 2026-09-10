@@ -57,7 +57,9 @@ to managed release downloads.
 The service appears as `vimls` in `:CocList services`; logs are available in the
 `vimls` output channel through `:CocCommand vimls.openOutput` or `:CocCommand workspace.showOutput`.
 
-The extension automatically checks for new releases once a week in the background and notifies you when an update is available.
+The extension checks for new releases once a week in the background and notifies
+you when an update is available. Set `vimls.checkForUpdates` to `false` to disable
+these checks; initial installation and `vimls.update` still work.
 
 ## Commands
 
@@ -81,6 +83,7 @@ Set options in `:CocConfig`:
 | Setting | Default | Description |
 | --- | --- | --- |
 | `vimls.trace.server` | `"off"` | Protocol logging: `off`, `messages` or `verbose`. Updates dynamically; logs appear in the `vimls` output channel. |
+| `vimls.checkForUpdates` | `true` | Check for releases weekly in the background. |
 | `vimls.command` | `""` | Custom executable path; empty uses managed GitHub releases. Reload after changing. |
 | `vimls.args` | `[]` | Server arguments; retain stdio transport. Reload after changing. |
 | `vimls.vimCommand` | `"vim"` | Path to system vim executable for executing Vim9 script in Neovim. |
