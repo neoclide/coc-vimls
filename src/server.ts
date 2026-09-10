@@ -107,12 +107,19 @@ export async function ensureServer(storage: string, update = false): Promise<str
 
 /** The installer retains at most one previous complete installation. */
 export async function previousServer(storage: string): Promise<string | undefined> {
-  const current = await cachedServer(storage)
-  if (!current) return
+  // Identify the current installation without requiring its binary to work.
+  let current: string
+  try {
+    current = (await readFile(join(storage, 'current'), 'utf8')).trim()
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return
+    throw error
+  }
+  if (!/^server-[a-zA-Z0-9]+$/.test(current)) return
   for (const entry of await readdir(storage, { withFileTypes: true })) {
     if (!entry.isDirectory() || !/^server-[a-zA-Z0-9]+$/.test(entry.name)) continue
     const binary = join(storage, entry.name, process.platform === 'win32' ? 'vimls.exe' : 'vimls')
-    if (binary === current) continue
+    if (entry.name === current) continue
     try {
       await access(binary, process.platform === 'win32' ? constants.F_OK : constants.X_OK)
       await readFile(join(storage, entry.name, 'version'), 'utf8')

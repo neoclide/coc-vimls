@@ -148,6 +148,12 @@ describe('coc-vimls', () => {
       assert.deepEqual((await readdir(storage)).sort(), retained)
       assert.equal(assetName('win32', 'x64'), 'vimls-windows-amd64.exe')
       assert.throws(() => assetName('linux', 'ia32'), /No vimls-go release binary/)
+      // A broken current installation must not hide the usable previous binary.
+      await rm(third)
+      assert.equal(await cachedServer(storage), undefined)
+      assert.equal(await previousServer(storage), second)
+      await selectServer(storage, second)
+      assert.equal(await cachedServer(storage), second)
     } finally {
       await new Promise<void>((resolve, reject) => http.close(error => error ? reject(error) : resolve()))
     }
