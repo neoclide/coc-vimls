@@ -1,4 +1,4 @@
-import { CodeAction, CodeActionKind, CodeActionProvider, commands, ExtensionContext, LanguageClient, languages, Range, services, window, workspace } from 'coc.nvim'
+import { CodeAction, CodeActionKind, CodeActionProvider, commands, ExtensionContext, LanguageClient, languages, Range, services, Uri, window, workspace } from 'coc.nvim'
 import { cachedServer, ensureServer, installedVersion, latestRelease, previousServer, selectServer } from './server'
 import { executeVimScript, isVim9 } from './execute'
 import { registerDiagnosticQuickfix } from './diagnostic'
@@ -131,8 +131,8 @@ export async function activate(context: ExtensionContext): Promise<void> {
     if (!text) {
       doc = await workspace.document
       if (!doc) return
-      const r = await window.getSelectedRange('v')
-      if (r) text = doc.textDocument.getText(r)
+      range = await window.getSelectedRange('v') ?? undefined
+      if (range) text = doc.textDocument.getText(range)
     }
     if (!text.trim()) return
     doc ??= await workspace.document
@@ -140,9 +140,15 @@ export async function activate(context: ExtensionContext): Promise<void> {
     try {
       const vim9 = isVim9(doc, text)
       const vimCommand = workspace.getConfiguration('vimls').get<string>('vimCommand', '') || 'vim'
+      const fullLines = range && range.start.character === 0 && (range.end.character === 0 || range.end.character === doc?.getline(range.end.line).length)
       const res = await executeVimScript(workspace.nvim, text, vim9, {
         isNvim: workspace.isNvim,
         vimCommand,
+        sourcePath: doc?.uri && Uri.parse(doc.uri).scheme === 'file' ? Uri.parse(doc.uri).fsPath : undefined,
+        sourceRange: fullLines && doc && range ? {
+          bufnr: doc.bufnr, start: range.start.line + 1,
+          end: range.end.character === 0 ? range.end.line : range.end.line + 1,
+        } : undefined,
       })
       if (res) {
         window.showMessage(res)

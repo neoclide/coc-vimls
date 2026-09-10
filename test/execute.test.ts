@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { describe, it } from 'node:test'
 import { isVim9, ensureVim9script, runSystemVim, executeVimScript } from '../src/execute.ts'
-import { mkdtemp, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -107,6 +107,23 @@ describe('Vim execution utilities', () => {
       assert.equal(calls.length, 1)
       assert.equal(calls[0].method, 'execute')
       assert.equal(calls[0].args[0][0], 'let g:x = 1')
+    })
+
+    it('preserves relative imports and the source filename without executing the file', async () => {
+      const directory = await mkdtemp(join(tmpdir(), "vimls context ' 中文 "))
+      const original = join(directory, 'original.vim')
+      const content = "vim9script\nthrow 'the original file must not run'\n"
+      try {
+        await writeFile(original, content)
+        await writeFile(join(directory, 'dep.vim'), 'vim9script\nexport const Value = 42\n')
+        const result = await executeVimScript({}, "import './dep.vim' as dep\necho dep.Value\necho expand('<sfile>')", true, {
+          isNvim: true, sourcePath: original,
+        })
+        assert.equal(result, `42\n${await realpath(original)}`)
+        assert.equal(await readFile(original, 'utf8'), content)
+      } finally {
+        await rm(directory, { recursive: true, force: true })
+      }
     })
 
     it('executes vim9script via system vim when isNvim is true', async () => {

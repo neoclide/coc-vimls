@@ -66,10 +66,19 @@ export function ensureVim9script(text: string): string {
 export function runSystemVim(
   vimBin: string,
   scriptPath: string,
-  timeout = 10000
+  timeout = 10000,
+  sourcePath?: string,
 ): Promise<{ code: number | null; output: string }> {
   return new Promise((resolve, reject) => {
-    const cp = spawn(vimBin, ['-u', 'NONE', '-i', 'NONE', '-N', '-es', '-V1', '-S', scriptPath, '-c', 'qall!'])
+    // Name an in-memory buffer after the original file, then source only the
+    // supplied snippet. Never overwrite or source the original file on disk.
+    const expression = (value: string) => `json_decode('${JSON.stringify(value).replaceAll("'", "''")}')`
+    const sourceArgs = sourcePath ? [
+      '-c', `silent execute 'file ' . fnameescape(${expression(sourcePath)})`,
+      '-c', `call setline(1, readfile(${expression(scriptPath)}))`,
+      '-c', '%source',
+    ] : ['-S', scriptPath]
+    const cp = spawn(vimBin, ['-u', 'NONE', '-i', 'NONE', '-N', '-es', '-V1', ...sourceArgs, '-c', 'qall!'])
     let output = ''
     let timer: NodeJS.Timeout | undefined
 
@@ -101,6 +110,9 @@ export interface ExecuteOptions {
   isNvim: boolean
   vimCommand?: string
   timeout?: number
+  sourcePath?: string
+  /** Complete lines in the current buffer, using one-based inclusive indices. */
+  sourceRange?: { bufnr: number; start: number; end: number }
 }
 
 /**
@@ -124,12 +136,21 @@ export async function executeVimScript(
   const scriptContent = ensureVim9script(text)
   const canRunInVim = !options.isNvim && Boolean(await nvim.call('has', ['vim9script']).catch(() => 0))
 
+  if (canRunInVim && options.sourceRange) {
+    const { bufnr, start, end } = options.sourceRange
+    if (await nvim.call('bufnr', ['%']) !== bufnr) {
+      throw new Error('Open the selected Vim buffer before executing its lines')
+    }
+    const res = await nvim.call('execute', [`vim9cmd :${start},${end}source`])
+    return typeof res === 'string' ? res.trim() : ''
+  }
+
   const tmpDir = await mkdtemp(join(tmpdir(), 'coc-vimls-'))
   const scriptPath = join(tmpDir, 'exec.vim')
   try {
     await writeFile(scriptPath, scriptContent, 'utf8')
 
-    if (canRunInVim) {
+    if (canRunInVim && !options.sourcePath) {
       const escaped = await nvim.call('fnameescape', [scriptPath])
       const res = await nvim.call('execute', [`source ${escaped}`])
       return typeof res === 'string' ? res.trim() : ''
@@ -139,7 +160,7 @@ export async function executeVimScript(
     const vimBin = options.vimCommand || 'vim'
     let res: { code: number | null; output: string }
     try {
-      res = await runSystemVim(vimBin, scriptPath, options.timeout)
+      res = await runSystemVim(vimBin, scriptPath, options.timeout, options.sourcePath)
     } catch (err: any) {
       if (err?.code === 'ENOENT') {
         throw new Error(`system vim executable "${vimBin}" not found. Please install Vim 9 or configure vimls.vimCommand.`)

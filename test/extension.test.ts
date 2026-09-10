@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtemp, mkdir, readdir, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, readdir, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { createHash } from 'node:crypto'
 import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
@@ -211,6 +211,26 @@ describe('coc-vimls', () => {
     const range = Range.create(1, 0, 2, 13)
     const res = await commands.executeCommand('vimls.executeSelected', document.uri, range)
     assert.equal(res, '579')
+  })
+
+  it('executes Vim9 selections in their file context without sourcing unselected lines', async () => {
+    const root = join(directory, 'selection context')
+    await mkdir(root)
+    await writeFile(join(root, 'dep.vim'), 'vim9script\nexport const Value = 42\n')
+    const file = join(root, 'selected.vim')
+    const lines = ['vim9script', "throw 'outside the selection'", "import './dep.vim' as dep", 'echo dep.Value', "echo expand('<sfile>')"]
+    const content = lines.join('\n') + '\n'
+    await writeFile(file, content)
+    await workspace.openResource(Uri.file(file).toString())
+    const document = await workspace.document
+    const result = await commands.executeCommand('vimls.executeSelected', document.uri, Range.create(2, 0, 4, lines[4].length))
+    assert.equal(result, `42\n${await realpath(file)}`)
+    assert.equal(document.textDocument.getText(), content)
+    assert.equal(await readFile(file, 'utf8'), content)
+    if (!workspace.isNvim) {
+      // Native Vim keeps imports and other script-local state for later selections.
+      assert.equal(await commands.executeCommand('vimls.executeSelected', document.uri, Range.create(3, 0, 3, lines[3].length)), '42')
+    }
   })
 
   it('manages diagnostic rules without changing the existing quickfix menu', async t => {
