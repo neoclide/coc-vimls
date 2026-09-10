@@ -17,7 +17,42 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      should_release: ${{ steps.check.outputs.should_release }}
+      source_head: ${{ steps.check.outputs.source_head }}
+    steps:
+      - name: Check out the default branch
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.repository.default_branch }}
+
+      - name: Check for commits after the latest release tag
+        id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+          source_head="$(git rev-parse HEAD)"
+          echo "source_head=${source_head}" >> "$GITHUB_OUTPUT"
+          latest_tag="$(git tag --list '[0-9]*.[0-9]*.[0-9]*' | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n 1 || true)"
+          if [[ -z "$latest_tag" ]]; then
+            echo "::error::No SemVer release tag found; create the baseline release tag before running this workflow"
+            exit 1
+          fi
+          if [[ "$source_head" == "$(git rev-parse "refs/tags/${latest_tag}^{commit}")" ]]; then
+            echo "HEAD is already at latest release tag ${latest_tag}; skipping release."
+            echo "should_release=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_release=true" >> "$GITHUB_OUTPUT"
+          fi
+
   release:
+    needs: check
+    if: needs.check.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 30
     env:
@@ -28,6 +63,17 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.event.repository.default_branch }}
+
+      - name: Verify checked commit
+        shell: bash
+        env:
+          SOURCE_HEAD: ${{ needs.check.outputs.source_head }}
+        run: |
+          set -euo pipefail
+          if [[ "$(git rev-parse HEAD)" != "$SOURCE_HEAD" ]]; then
+            echo "::error::Default branch advanced after the release check; retry the workflow"
+            exit 1
+          fi
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
@@ -145,26 +191,6 @@ jobs:
             exit 0
           fi
 
-          commit_count="$(git rev-list --count "${previous_tag}..HEAD")"
-          if [[ "$commit_count" == "0" ]]; then
-            if registry_result="$(npm view "${package_name}@${current_version}" version --json 2>/dev/null)"; then
-              echo "No commits since ${previous_tag}; nothing to release."
-              echo "mode=skip" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-
-            registry_error="$(printf '%s' "$registry_result" | node -e 'let data = ""; process.stdin.on("data", chunk => data += chunk); process.stdin.on("end", () => { try { console.log(JSON.parse(data).error?.code || "unknown") } catch { console.log("unknown") } })')"
-            if [[ "$registry_error" != "E404" ]]; then
-              echo "::error::npm lookup failed (${registry_error}); refusing publish-only recovery"
-              exit 1
-            fi
-
-            echo "Git release ${current_version} exists but npm does not have it; retrying publication only."
-            echo "mode=publish-only" >> "$GITHUB_OUTPUT"
-            echo "version=${current_version}" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
           published_version="$(npm view "$package_name" version)"
           if [[ "$published_version" != "$current_version" ]]; then
             echo "::error::package.json version ${current_version} does not match npm latest ${published_version}"
@@ -250,7 +276,7 @@ jobs:
           git push
 
       - name: Publish to npm
-        if: steps.release.outputs.mode == 'release' || steps.release.outputs.mode == 'publish-only'
+        if: steps.release.outputs.mode == 'release'
         # Authentication is provided exclusively by npm Trusted Publishing
         # through GitHub OIDC; this workflow must not use NODE_AUTH_TOKEN.
         run: npm publish
