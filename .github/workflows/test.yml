@@ -8,6 +8,8 @@ jobs:
   integration:
     name: coc-test (${{ matrix.editor }})
     runs-on: ubuntu-latest
+    env:
+      LANG: C.UTF-8
     strategy:
       fail-fast: false
       matrix:
@@ -21,7 +23,25 @@ jobs:
       - name: Install editors
         run: |
           sudo apt-get update
-          sudo apt-get install -y neovim vim
+          sudo apt-get install -y neovim build-essential libncurses-dev
+      # Buffer :source needs patch 9.1.0359 to preserve filenames and relative
+      # imports. Neovim also needs this Vim for external Vim9 execution.
+      - uses: actions/checkout@v4
+        with:
+          repository: vim/vim
+          ref: 5ab969f719bb09555e90e8dff8c94fc37bcbf2ae # v9.2.1015
+          path: .vim
+      - name: Build Vim
+        run: |
+          cd .vim
+          ./configure --with-features=huge --enable-gui=no --without-x --prefix="$RUNNER_TEMP/vim"
+          make -j2
+          make install
+          echo "$RUNNER_TEMP/vim/bin" >> "$GITHUB_PATH"
+      - name: Check editor versions
+        run: |
+          vim --version
+          nvim --version
       - uses: actions/checkout@v4
         with:
           repository: neoclide/vimls-go

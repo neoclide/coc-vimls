@@ -112,6 +112,10 @@ file-watcher registrations. Runtimepath changes are synchronized separately.
 
 ## Executing selections
 
+Preserving the file context of Vim9 selections requires Vim 9.1.0359 or newer.
+This applies to the current Vim editor and to the external Vim selected by
+`vimls.vimCommand` when using Neovim or executing partial lines.
+
 Legacy Vim script runs in the current editor. In Vim with Vim9 support, complete
 lines of Vim9 script are sourced directly from the current buffer, preserving
 its filename, relative imports and script-local state from previous execution.
@@ -190,6 +194,8 @@ npm pack --dry-run
 Alternatively set `VIMLS_TEST_BIN` to a directory containing `vimls`.
 Tests load TypeScript source through coc-test and exercise a real server in both
 editors. Download tests use a local HTTP fixture and do not access GitHub.
+CI builds Vim 9.2.1015 from a pinned commit for both editor jobs, since the
+distribution Vim may lack support for file-relative imports in buffer selections.
 The suite covers installation recovery, rollback, configuration scope, selection
 execution and the registered completion, navigation, rename, formatting and
 CodeLens providers. Watcher tests inject file events into coc.nvim's registered
