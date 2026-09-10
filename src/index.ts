@@ -5,26 +5,25 @@ import { registerDiagnosticQuickfix } from './diagnostic'
 
 let client: LanguageClient | undefined
 let updating: Promise<void> | undefined
+let active = false
 const ONE_WEEK_MS = 7 * 24 * 60 * 60 * 1000
 
 async function checkWeeklyUpdate(context: ExtensionContext): Promise<void> {
-  if (workspace.getConfiguration('vimls').get<string>('command', '')) {
-    return
-  }
+  if (workspace.getConfiguration('vimls').get<string>('command', '')) return
   const lastCheck = context.globalState.get<number>('last_update_check', 0)
   const now = Date.now()
   if (now - lastCheck < ONE_WEEK_MS) return
-  await context.globalState.update('last_update_check', now)
   try {
     const release = await latestRelease()
     const currentVer = await installedVersion(context.storagePath)
-    if (currentVer && currentVer !== release.tag_name) {
+    await context.globalState.update('last_update_check', now)
+    if (active && currentVer && currentVer !== release.tag_name) {
       const item = await window.showInformationMessage(
         `A new vimls-go release (${release.tag_name}) is available. Current version: ${currentVer}.`,
         'Update now'
       )
       if (item === 'Update now') {
-        void commands.executeCommand('vimls.update')
+        await commands.executeCommand('vimls.update')
       }
     }
   } catch {
@@ -36,35 +35,75 @@ export async function activate(context: ExtensionContext): Promise<void> {
   registerDiagnosticQuickfix(context)
   const config = workspace.getConfiguration('vimls')
   const serverOptions = { command: config.get<string>('command', '') || '', args: config.get<string[]>('args', []) }
-  context.subscriptions.push(commands.registerCommand('vimls.update', () => {
-    if (workspace.getConfiguration('vimls').get<string>('command', '')) {
-      return window.showInformationMessage('vimls.command is configured; update that executable manually or clear vimls.command to use GitHub releases.')
+  active = true
+  let runtimepath = workspace.env.runtimepath.split(',')
+  let lastError = ''
+  let registered = false
+  const channel = window.createOutputChannel('vimls')
+  context.subscriptions.push(channel)
+  const current = new LanguageClient('vimls', 'vimls-go', serverOptions, {
+    documentSelector: [{ language: 'vim', scheme: 'file' }, { language: 'vim', scheme: 'untitled' }],
+    initializationOptions: () => ({
+      runtimepath,
+      configFiles: workspace.getConfiguration('vim').get<string[]>('configFiles', []),
+    }),
+    synchronize: { configurationSection: 'vim' },
+    outputChannel: channel,
+    initializationFailedHandler: error => {
+      lastError = String(error)
+      return false
+    },
+  })
+  client = current
+  const customCommand = serverOptions.command
+  const register = () => {
+    if (!registered) {
+      registered = true
+      context.subscriptions.push(services.registerLanguageClient(current))
     }
-    updating ??= (async () => {
-      const command = await window.withProgress({ title: 'Updating vimls-go' }, () => ensureServer(context.storagePath, true))
-      if (client) {
-        await client.stop()
-        serverOptions.command = command
-        await client.start()
-      }
-      await window.showInformationMessage('vimls-go is up to date.')
-    })().finally(() => { updating = undefined })
+  }
+  // Installation and restart share one operation to avoid stopping
+  // a process while another command is changing its executable.
+  const operate = (operation: () => Promise<void>): Promise<void> => {
+    if (updating) return updating
+    updating = operation().catch(error => {
+      lastError = error instanceof Error ? error.message : String(error)
+      channel.appendLine(`vimls-go: ${lastError}`)
+      void window.showErrorMessage(`vimls-go: ${lastError}. Use vimls.doctor for details and vimls.restart to retry.`)
+      throw error
+    }).finally(() => { updating = undefined })
     return updating
-  }))
-
-  context.subscriptions.push(commands.registerCommand('vimls.restart', async () => {
-    if (!client) return
-    try {
-      if (client.isRunning()) {
-        await client.restart()
-      } else {
-        await client.start()
-      }
-      window.showMessage('vimls-go server restarted')
-    } catch (error) {
-      void window.showErrorMessage(`Failed to restart vimls-go: ${String(error)}`)
+  }
+  const start = async () => {
+    serverOptions.command ||= await window.withProgress({ title: 'Installing vimls-go' }, () => ensureServer(context.storagePath))
+    await current.start()
+    register()
+    lastError = ''
+  }
+  const managed = () => {
+    if (customCommand || workspace.getConfiguration('vimls').get<string>('command', '')) {
+      void window.showInformationMessage('vimls.command is configured; update that executable manually or clear vimls.command and reload the extension to use managed releases.')
+      return false
     }
+    return true
+  }
+  context.subscriptions.push(commands.registerCommand('vimls.update', () => {
+    if (!managed()) return
+    return operate(async () => {
+      const command = await window.withProgress({ title: 'Updating vimls-go' }, () => ensureServer(context.storagePath, true))
+      await current.stop()
+      serverOptions.command = command
+      await current.start()
+      register()
+      lastError = ''
+      await window.showInformationMessage('vimls-go is up to date.')
+    })
   }))
+  context.subscriptions.push(commands.registerCommand('vimls.restart', () => operate(async () => {
+    await current.stop()
+    await start()
+    window.showMessage('vimls-go server restarted')
+  })))
 
   context.subscriptions.push(commands.registerCommand('vimls.openOutput', () => {
     if (client) {
@@ -134,13 +173,8 @@ export async function activate(context: ExtensionContext): Promise<void> {
     'vimls'
   ))
 
-  serverOptions.command ||= await window.withProgress({ title: 'Installing vimls-go' }, () => ensureServer(context.storagePath))
-
-  let runtimepath = workspace.env.runtimepath.split(',')
-
   context.subscriptions.push(commands.registerCommand('vimls.doctor', async () => {
-    const channel = client ? client.outputChannel : window.createOutputChannel('vimls')
-    channel.clear()
+    channel.appendLine('')
     channel.appendLine('=== vimls-go Doctor ===')
     channel.appendLine(`Status: ${client?.isRunning() ? 'running' : 'stopped'}`)
     const customCmd = workspace.getConfiguration('vimls').get<string>('command', '')
@@ -149,6 +183,8 @@ export async function activate(context: ExtensionContext): Promise<void> {
     channel.appendLine(`Binary: ${binary}`)
     const version = await installedVersion(context.storagePath)
     channel.appendLine(`Installed Version: ${version || (customCmd ? 'custom' : 'none')}`)
+    channel.appendLine(`Last Error: ${lastError || 'none'}`)
+    channel.appendLine('Recovery: vimls.restart retries installation/startup; vimls.update installs the latest release.')
     channel.appendLine(`Platform: ${process.platform} (${process.arch})`)
     channel.appendLine(`Trace Level: ${workspace.getConfiguration('vimls').get<string>('trace.server', 'off')}`)
     const configFiles = workspace.getConfiguration('vim').get<string[]>('configFiles', [])
@@ -163,16 +199,6 @@ export async function activate(context: ExtensionContext): Promise<void> {
     channel.show()
   }))
 
-  const current = new LanguageClient('vimls', 'vimls-go', serverOptions, {
-    documentSelector: [{ language: 'vim', scheme: 'file' }, { language: 'vim', scheme: 'untitled' }],
-    initializationOptions: () => ({
-      runtimepath,
-      configFiles: workspace.getConfiguration('vim').get<string[]>('configFiles', []),
-    }),
-    synchronize: { configurationSection: 'vim' },
-    outputChannelName: 'vimls',
-  })
-  client = current
   workspace.watchOption('runtimepath', async (_oldValue: string, newValue: string) => {
     try {
       runtimepath = newValue.split(',')
@@ -183,11 +209,13 @@ export async function activate(context: ExtensionContext): Promise<void> {
       void window.showErrorMessage(`vimls-go: failed to update runtimepath: ${String(error)}`)
     }
   }, context.subscriptions)
-  context.subscriptions.push(services.registerLanguageClient(current))
-  void checkWeeklyUpdate(context)
+  // Keep commands available even when the first installation or startup fails.
+  await operate(start).catch(() => {})
+  if (active) void checkWeeklyUpdate(context)
 }
 
 export async function deactivate(): Promise<void> {
+  active = false
   await updating?.catch(() => {})
   const current = client
   client = undefined
