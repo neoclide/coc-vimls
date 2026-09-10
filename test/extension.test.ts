@@ -376,6 +376,26 @@ describe('coc-vimls', () => {
       await config.update('diagnostic.disabled', original, true)
     }
   })
+  it('disables a diagnostic in the real project override without changing user settings', async () => {
+    const originalUri = (await workspace.document).uri
+    const userValue = workspace.getConfiguration('vim', null).inspect<string[]>('diagnostic.disabled')?.globalValue
+    const root = join(directory, 'diagnostic-project')
+    await mkdir(join(root, '.vim'), { recursive: true })
+    await writeFile(join(root, '.vim', 'coc-settings.json'), JSON.stringify({ 'vim.diagnostic.disabled': ['project-only'] }))
+    const file = join(root, 'settings.vim')
+    await writeFile(file, '" diagnostic scope fixture\n')
+    try {
+      await workspace.openResource(Uri.file(file).toString())
+      const document = await workspace.document
+      assert.deepEqual(workspace.getConfiguration('vim', document.uri).get('diagnostic.disabled'), ['project-only'])
+      await commands.executeCommand('vimls.disableDiagnostic', 'fixture/code', document.uri)
+      assert.deepEqual(workspace.getConfiguration('vim', document.uri).get('diagnostic.disabled'), ['project-only', 'fixture/code'])
+      assert.deepEqual(workspace.getConfiguration('vim', null).inspect('diagnostic.disabled')?.globalValue, userValue)
+    } finally {
+      await workspace.openResource(originalUri)
+    }
+  })
+
   describe('registered language features', () => {
     let root: string
     const token = CancellationToken.None

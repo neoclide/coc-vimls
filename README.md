@@ -106,7 +106,7 @@ file-watcher registrations. Runtimepath changes are synchronized separately.
 
 ## Code Actions
 
-- `Disable diagnostic <code>`: A quickfix for the vimls diagnostic nearest the cursor on the current line. Adds its code to the user setting `vim.diagnostic.disabled`, preserving existing entries. Suppresses that diagnostic code across files.
+- `Disable diagnostic <code>`: A quickfix for the vimls diagnostic nearest the cursor on the current line. Adds its code to `vim.diagnostic.disabled`, preserving existing entries. If the current project overrides that list, the action is labeled `in project` and updates the project setting; otherwise it updates user settings. Suppression applies across files in that scope.
 - `Execute selected Vim script`: Execute a nonempty selection using the editor or system Vim as described below.
 
 
@@ -137,8 +137,8 @@ workspace; this is not per-buffer suppression.
 
 Enabling a rule removes it from that scope's disabled list. Severity changes do
 not re-enable disabled rules. Removing a project severity override restores the
-inherited user setting, if any. The existing quickfix still disables the nearest
-diagnostic globally in one action.
+inherited user setting, if any. The quickfix disables the nearest diagnostic in one action, using project
+settings when the disabled list is overridden there and user settings otherwise.
 
 ## Settings
 
