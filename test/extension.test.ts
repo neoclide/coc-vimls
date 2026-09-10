@@ -5,7 +5,7 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { after, before, describe, it } from 'node:test'
-import { CancellationToken, CodeAction, CodeActionKind, commands, CompletionContext, Diagnostic, diagnosticManager, DocumentSymbol, Emitter, ExtensionContext, LanguageClient, Position, Range, services, Uri, window, workspace } from 'coc.nvim'
+import { CancellationToken, CodeAction, CodeActionKind, commands, CompletionContext, Diagnostic, diagnosticManager, DocumentSymbol, Emitter, ExtensionContext, LanguageClient, Position, Range, services, Uri, window, workspace, WorkspaceSymbol } from 'coc.nvim'
 import { activate, checkWeeklyUpdate, deactivate } from '../src/index.ts'
 import { assetName, cachedServer, installRelease, previousServer, selectServer } from '../src/server.ts'
 
@@ -403,6 +403,20 @@ describe('coc-vimls', () => {
       await workspace.openResource(Uri.file(join(root, name)).toString())
       return workspace.document
     }
+    const workspaceSymbols = async (query: string): Promise<WorkspaceSymbol[]> => {
+      let items: WorkspaceSymbol[] = []
+      await waitFor(async () => {
+        try {
+          items = await client.sendRequest<WorkspaceSymbol[]>('workspace/symbol', { query })
+          return true
+        } catch (error) {
+          // LSP ContentModified: a rebuild invalidated this read of the index.
+          if ((error as { code?: number })?.code === -32801) return false
+          throw error
+        }
+      })
+      return items
+    }
     before(async () => {
       root = join(directory, 'language-features')
       await mkdir(root)
@@ -410,9 +424,14 @@ describe('coc-vimls', () => {
       await writeFile(join(root, 'consumer.vim'), "vim9script\nimport './lib.vim' as lib\necho lib.Target()\n")
       await writeFile(join(root, 'completion.vim'), 'call strl\n')
       await writeFile(join(root, 'format.vim'), 'vim9script\ndef Example()\necho 1\nenddef\n')
+      // A running client can still be rebuilding its workspace after restart.
+      // workspace/symbol waits for that scan before we replace the runtime roots.
+      await workspaceSymbols('')
       await client.sendRequest('vimls/didChangeRuntimepath', { runtimepath: [root] })
     })
     after(async () => {
+      // Finish the watcher test's workspace-folder removal before restoring roots.
+      await workspaceSymbols('')
       await client.sendRequest('vimls/didChangeRuntimepath', { runtimepath: workspace.env.runtimepath.split(',') })
     })
 
@@ -488,7 +507,7 @@ describe('coc-vimls', () => {
           dispose() { create.dispose(); change.dispose(); deleted.dispose(); renamed.dispose() },
         }
       })
-      const symbols = () => client.sendRequest<any[]>('workspace/symbol', { query: 'WatchFixture' })
+      const symbols = () => workspaceSymbols('WatchFixture')
       try {
         await client.sendNotification('workspace/didChangeWorkspaceFolders', { event: { added: [folder], removed: [] } })
         await waitFor(() => Boolean(events))

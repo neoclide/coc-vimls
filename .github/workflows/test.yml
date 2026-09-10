@@ -33,7 +33,9 @@ jobs:
           path: .vim
       - name: Build Vim
         run: |
-          cd .vim
+          # Keep thousands of unrelated Vim source fixtures out of the test workspace.
+          mv .vim "$RUNNER_TEMP/vim-src"
+          cd "$RUNNER_TEMP/vim-src"
           ./configure --with-features=huge --enable-gui=no --without-x --prefix="$RUNNER_TEMP/vim"
           make -j2
           make install
