@@ -5,8 +5,8 @@ import { createServer } from 'node:http'
 import { tmpdir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { after, before, describe, it } from 'node:test'
-import { CodeAction, CodeActionKind, commands, Diagnostic, diagnosticManager, DocumentSymbol, LanguageClient, Range, services, Uri, workspace } from 'coc.nvim'
-import { deactivate } from '../src/index.ts'
+import { CodeAction, CodeActionKind, commands, Diagnostic, diagnosticManager, DocumentSymbol, ExtensionContext, LanguageClient, Range, services, Uri, window, workspace } from 'coc.nvim'
+import { activate, deactivate } from '../src/index.ts'
 import { assetName, cachedServer, installRelease } from '../src/server.ts'
 
 async function waitFor(check: () => boolean): Promise<void> {
@@ -22,10 +22,11 @@ describe('coc-vimls', () => {
   let directory: string
   before(async () => {
     directory = await mkdtemp(join(tmpdir(), 'coc-vimls-'))
-    await workspace.nvim.command('enew!')
-    // FileType is ignored while coc.nvim is still creating the document.
+    const file = join(directory, 'main.vim')
+    await writeFile(file, 'function! HelloVimls()\n  return 42\nendfunction\n')
+    await workspace.openResource(Uri.file(file).toString())
+    // Wait for coc.nvim's Document before querying the service.
     await workspace.document
-    await workspace.nvim.command('setfiletype vim')
     await waitFor(() => services.getService('vimls')?.client?.isRunning() === true)
     client = services.getService('vimls').client!
   })
@@ -38,8 +39,6 @@ describe('coc-vimls', () => {
 
   it('analyzes a Vim buffer through the real server', async () => {
     const document = await workspace.document
-    await document.buffer.setLines(['function! HelloVimls()', '  return 42', 'endfunction'], { start: 0, end: -1, strictIndexing: false })
-    await document.synchronize()
     const symbols = await client.sendRequest<DocumentSymbol[]>('textDocument/documentSymbol', {
       textDocument: { uri: document.uri },
     })
@@ -148,19 +147,13 @@ describe('coc-vimls', () => {
     }
   })
 
-  it('updates from GitHub releases and restarts the service', async () => {
-    assert.equal(commands.has('vimls.update'), true)
-    await workspace.getConfiguration('vimls').update('command', '', true)
+  it('leaves custom server updates to the user', async () => {
     await commands.executeCommand('vimls.update')
     assert.equal(client.isRunning(), true)
-    const document = await workspace.document
-    const symbols = await client.sendRequest<DocumentSymbol[]>('textDocument/documentSymbol', {
-      textDocument: { uri: document.uri },
-    })
-    assert.ok(symbols.some(symbol => symbol.name.includes('HelloVimls')))
   })
 
-  it('supports restart, openOutput, and doctor commands', async () => {
+  it('supports restart, openOutput, and doctor commands', async t => {
+    const show = t.mock.method(client.outputChannel, 'show', () => {})
     assert.equal(commands.has('vimls.restart'), true)
     assert.equal(commands.has('vimls.openOutput'), true)
     assert.equal(commands.has('vimls.doctor'), true)
@@ -168,6 +161,7 @@ describe('coc-vimls', () => {
 
     await commands.executeCommand('vimls.openOutput')
     await commands.executeCommand('vimls.doctor')
+    assert.equal(show.mock.callCount(), 2)
     await commands.executeCommand('vimls.restart')
     await waitFor(() => client.isRunning() === true)
     assert.equal(client.isRunning(), true)
@@ -284,4 +278,50 @@ describe('coc-vimls', () => {
       await config.update('diagnostic.disabled', original, true)
     }
   })
+  it('keeps doctor and retry available after a first-install failure', async t => {
+    await deactivate()
+    const config = workspace.getConfiguration('vimls')
+    const original = config.get<string>('command')
+    const registered = new Map<string, (...args: any[]) => any>()
+    const lines: string[] = []
+    const subscriptions: { dispose(): any }[] = []
+    const context = {
+      storagePath: join(directory, 'first-install'), subscriptions,
+      globalState: { get: () => Date.now(), update: async () => {} },
+    } as unknown as ExtensionContext
+    t.mock.method(commands, 'registerCommand', (id: string, fn: (...args: any[]) => any) => {
+      registered.set(id, fn)
+      return { dispose() {} }
+    })
+    t.mock.method(window, 'createOutputChannel', () => ({
+      name: 'vimls', appendLine: (line: string) => lines.push(line),
+      append() {}, show() {}, hide() {}, clear() {}, dispose() {},
+    }))
+    t.mock.method(window, 'showErrorMessage', async () => undefined)
+    let attempts = 0
+    t.mock.method(window, 'withProgress', async () => {
+      if (++attempts === 1) throw new Error('fixture download unavailable')
+      return 'fixture-vimls'
+    })
+    const starts = t.mock.method(LanguageClient.prototype, 'start', async () => {})
+    t.mock.method(services, 'registerLanguageClient', () => ({ dispose() {} }))
+    try {
+      await config.update('command', '', true)
+      await activate(context)
+      assert.equal(starts.mock.callCount(), 0)
+      await registered.get('vimls.doctor')!()
+      assert.ok(lines.some(line => line.includes('fixture download unavailable')))
+      await registered.get('vimls.restart')!()
+      assert.equal(attempts, 2)
+      assert.equal(starts.mock.callCount(), 1)
+      lines.length = 0
+      await registered.get('vimls.doctor')!()
+      assert.ok(lines.includes('Last Error: none'))
+    } finally {
+      await deactivate()
+      for (const subscription of subscriptions) await subscription.dispose()
+      await config.update('command', original, true)
+    }
+  })
+
 })

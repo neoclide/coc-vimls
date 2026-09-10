@@ -33,6 +33,10 @@ binary matching the operating system and CPU architecture.
 Remove any manually configured `languageserver.vimls` entry or competing Vim
 language-server extension to avoid running duplicate servers.
 
+If installation or startup fails, `vimls.doctor` remains available with the last
+error and cache information. Fix the cause, then run `vimls.restart` to retry
+without reloading the extension.
+
 ## Updating
 
 ```vim
@@ -114,6 +118,5 @@ npm pack --dry-run
 ```
 
 Alternatively set `VIMLS_TEST_BIN` to a directory containing `vimls`.
-Tests load TypeScript source through coc-test, exercise a real server in both
-editors, and test the release update command against GitHub. The update test
-requires network access. CI pins the server source used for local integration.
+Tests load TypeScript source through coc-test and exercise a real server in both
+editors. Download tests use a local HTTP fixture and do not access GitHub. CI pins the server source used for local integration.
