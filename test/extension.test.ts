@@ -174,6 +174,28 @@ describe('coc-vimls', () => {
     assert.equal(client.isRunning(), true)
   })
 
+  it('rejects an overlapping command instead of reporting another operation as its result', async t => {
+    let release!: () => void
+    let entered!: () => void
+    const gate = new Promise<void>(resolve => { release = resolve })
+    const started = new Promise<void>(resolve => { entered = resolve })
+    const stop = client.stop.bind(client)
+    t.mock.method(client, 'stop', async () => {
+      entered()
+      await gate
+      await stop()
+    })
+    const first = commands.executeCommand('vimls.restart')
+    try {
+      await started
+      await assert.rejects(commands.executeCommand('vimls.restart'), /Another vimls operation is in progress/)
+    } finally {
+      release()
+      await first
+    }
+    assert.equal(client.isRunning(), true)
+  })
+
   it('reports the running server instead of a pending command configuration', async t => {
     const lines: string[] = []
     t.mock.method(client.outputChannel, 'appendLine', (line: string) => lines.push(line))
