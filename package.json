@@ -1,6 +1,6 @@
 {
   "name": "coc-vimls",
-  "version": "0.0.3",
+  "version": "0.1.0",
   "description": "Vim script language support for coc.nvim powered by vimls-go",
   "repository": {
     "type": "git",
