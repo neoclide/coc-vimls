@@ -213,6 +213,23 @@ describe('coc-vimls', () => {
     assert.equal(res, '579')
   })
 
+  it('manages diagnostic rules without changing the existing quickfix menu', async t => {
+    const config = workspace.getConfiguration('vim')
+    const original = config.inspect<string[]>('diagnostic.disabled')?.globalValue
+    let action = 'Disable diagnostic'
+    t.mock.method(window, 'showQuickPick', async (items: any[]) => items.find(item => item.label === 'User settings' || item.label === action))
+    try {
+      await config.update('diagnostic.disabled', ['existing'], true)
+      await commands.executeCommand('vimls.diagnostics', 'fixture/code')
+      assert.deepEqual(workspace.getConfiguration('vim').get('diagnostic.disabled'), ['existing', 'fixture/code'])
+      action = 'Enable diagnostic'
+      await commands.executeCommand('vimls.diagnostics', 'fixture/code')
+      assert.deepEqual(workspace.getConfiguration('vim').get('diagnostic.disabled'), ['existing'])
+    } finally {
+      await config.update('diagnostic.disabled', original, true)
+    }
+  })
+
   it('offers the nearest diagnostic quickfix and preserves disabled codes', async t => {
     const document = await workspace.document
     await document.buffer.setLines(['" 中文 ' + 'x'.repeat(60), '" another line'], { start: 0, end: -1, strictIndexing: false })

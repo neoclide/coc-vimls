@@ -22,7 +22,8 @@
     "onCommand:vimls.doctor",
     "onCommand:vimls.openOutput",
     "onCommand:vimls.executeSelected",
-    "onCommand:vimls.rollback"
+    "onCommand:vimls.rollback",
+    "onCommand:vimls.diagnostics"
   ],
   "contributes": {
     "configuration": {
@@ -135,6 +136,10 @@
       {
         "command": "vimls.rollback",
         "title": "Restore the previous vimls-go installation"
+      },
+      {
+        "command": "vimls.diagnostics",
+        "title": "Manage Vim diagnostic rules"
       }
     ]
   },
