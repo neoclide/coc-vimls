@@ -7,7 +7,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import { CancellationToken, CodeAction, CodeActionKind, commands, CompletionContext, Diagnostic, diagnosticManager, DocumentSymbol, Emitter, ExtensionContext, LanguageClient, Position, Range, services, Uri, window, workspace, WorkspaceSymbol } from 'coc.nvim'
 import { activate, checkWeeklyUpdate, deactivate } from '../src/index.ts'
-import { assetName, cachedServer, installRelease, previousServer, removeServer, selectServer } from '../src/server.ts'
+import { assetName, cachedServer, installRelease, installedVersion, previousServer, removeServer, selectServer } from '../src/server.ts'
 
 async function waitFor(check: () => boolean | Promise<boolean>): Promise<void> {
   const deadline = Date.now() + 15000
@@ -154,6 +154,11 @@ describe('coc-vimls', () => {
       assert.equal(await previousServer(storage), second)
       await selectServer(storage, second)
       assert.equal(await cachedServer(storage), second)
+      // Version reading trims whitespace and handles missing version files safely.
+      await writeFile(join(dirname(second), 'version'), 'v2.0.0\r\n')
+      assert.equal(await installedVersion(storage), 'v2.0.0')
+      await rm(join(dirname(second), 'version'))
+      assert.equal(await installedVersion(storage), undefined)
     } finally {
       await new Promise<void>((resolve, reject) => http.close(error => error ? reject(error) : resolve()))
     }

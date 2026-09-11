@@ -101,7 +101,8 @@ export async function ensureServer(storage: string, update = false): Promise<str
   const cached = await cachedServer(storage)
   if (cached && !update) return cached
   const release = await latestRelease()
-  if (cached && await readFile(join(cached, '..', 'version'), 'utf8') === release.tag_name) return cached
+  const version = await installedVersion(storage)
+  if (cached && version === release.tag_name) return cached
   return installRelease(storage, release)
 }
 
