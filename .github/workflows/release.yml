@@ -57,6 +57,7 @@ jobs:
     timeout-minutes: 30
     env:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      LANG: C.UTF-8
     steps:
       - name: Check out the default branch
         uses: actions/checkout@v6
@@ -91,7 +92,34 @@ jobs:
       - name: Install editors
         run: |
           sudo apt-get update
-          sudo apt-get install -y neovim vim
+          sudo apt-get install -y neovim build-essential libncurses-dev
+
+      # Buffer :source needs patch 9.1.0359 to preserve filenames and relative
+      # imports. Match test.yml, including Neovim's external Vim9 execution.
+      - name: Build Vim
+        shell: bash
+        run: |
+          set -euo pipefail
+          archive="$(mktemp "${RUNNER_TEMP}/vim.XXXXXX.tar.gz")"
+          vim_source="$(mktemp -d "${RUNNER_TEMP}/vim-source.XXXXXX")"
+          trap 'rm -f "$archive"; rm -rf "$vim_source"' EXIT
+          curl --fail --location --retry 3 \
+            --header "Accept: application/vnd.github+json" \
+            --header "Authorization: Bearer ${GITHUB_TOKEN}" \
+            --header "X-GitHub-Api-Version: 2022-11-28" \
+            --output "$archive" \
+            https://api.github.com/repos/vim/vim/tarball/5ab969f719bb09555e90e8dff8c94fc37bcbf2ae
+          tar -xzf "$archive" --strip-components=1 -C "$vim_source"
+          cd "$vim_source"
+          ./configure --with-features=huge --enable-gui=no --without-x --prefix="$RUNNER_TEMP/vim"
+          make -j2
+          make install
+          echo "$RUNNER_TEMP/vim/bin" >> "$GITHUB_PATH"
+
+      - name: Check editor versions
+        run: |
+          vim --version
+          nvim --version
 
       - name: Download coc.nvim release branch
         shell: bash
