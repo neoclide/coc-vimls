@@ -138,3 +138,12 @@ export async function selectServer(storage: string, binary: string): Promise<voi
   await writeFile(marker, basename(directory))
   await rename(marker, join(storage, 'current'))
 }
+
+export async function removeServer(storage: string, binary: string): Promise<void> {
+  const directory = dirname(binary)
+  if (dirname(directory) !== storage || !/^server-[a-zA-Z0-9]+$/.test(basename(directory))) {
+    throw new Error('Invalid managed server path')
+  }
+  await rm(directory, { recursive: true, force: true })
+}
+

@@ -1,5 +1,5 @@
 import { CodeAction, CodeActionKind, CodeActionProvider, commands, ExtensionContext, LanguageClient, languages, Range, services, Uri, window, workspace } from 'coc.nvim'
-import { cachedServer, ensureServer, installedVersion, latestRelease, previousServer, selectServer } from './server'
+import { cachedServer, ensureServer, installedVersion, latestRelease, previousServer, removeServer, selectServer } from './server'
 import { executeVimScript, isVim9 } from './execute'
 import { registerDiagnosticQuickfix } from './diagnostic'
 import { switchServer } from './lifecycle'
@@ -90,7 +90,11 @@ export async function activate(context: ExtensionContext): Promise<void> {
     if (!managed()) return
     return operate(async () => {
       const command = await window.withProgress({ title: 'Updating vimls-go' }, () => ensureServer(context.storagePath, true))
-      await switchServer(current, serverOptions, command, binary => selectServer(context.storagePath, binary))
+      await switchServer(
+        current, serverOptions, command,
+        binary => selectServer(context.storagePath, binary),
+        binary => removeServer(context.storagePath, binary),
+      )
       register()
       lastError = ''
       await window.showInformationMessage('vimls-go is up to date.')
@@ -101,7 +105,11 @@ export async function activate(context: ExtensionContext): Promise<void> {
     return operate(async () => {
       const command = await previousServer(context.storagePath)
       if (!command) throw new Error('No previous managed installation is available')
-      await switchServer(current, serverOptions, command, binary => selectServer(context.storagePath, binary))
+      await switchServer(
+        current, serverOptions, command,
+        binary => selectServer(context.storagePath, binary),
+        binary => removeServer(context.storagePath, binary),
+      )
       register()
       lastError = ''
       await window.showInformationMessage('Previous vimls-go installation restored.')

@@ -44,4 +44,28 @@ describe('managed server switching', () => {
     }, { command: '' }, 'new', async () => {}), /first start failed/)
     assert.equal(attempts, 1)
   })
+
+  it('cleans up the failed installation when switching fails', async () => {
+    const options = { command: 'old' }
+    const events: string[] = []
+    await assert.rejects(switchServer({
+      stop: async () => { events.push('stop') },
+      start: async () => {
+        events.push(`start ${options.command}`)
+        if (options.command === 'new') throw new Error('bad executable')
+      },
+    }, options, 'new', async command => { events.push(`select ${command}`) }, async command => { events.push(`remove ${command}`) }), /bad executable.*Previous server restored/)
+    assert.equal(options.command, 'old')
+    assert.deepEqual(events, ['stop', 'select new', 'start new', 'stop', 'select old', 'start old', 'remove new'])
+  })
+
+  it('cleans up the failed installation even if recovery fails', async () => {
+    const options = { command: 'old' }
+    const removed: string[] = []
+    await assert.rejects(switchServer({
+      stop: async () => {},
+      start: async () => { throw new Error(`broken ${options.command}`) },
+    }, options, 'new', async () => {}, async command => { removed.push(command) }), /broken new.*Recovery failed.*broken old/)
+    assert.deepEqual(removed, ['new'])
+  })
 })

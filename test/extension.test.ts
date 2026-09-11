@@ -7,7 +7,7 @@ import { basename, dirname, join, resolve } from 'node:path'
 import { after, before, describe, it } from 'node:test'
 import { CancellationToken, CodeAction, CodeActionKind, commands, CompletionContext, Diagnostic, diagnosticManager, DocumentSymbol, Emitter, ExtensionContext, LanguageClient, Position, Range, services, Uri, window, workspace, WorkspaceSymbol } from 'coc.nvim'
 import { activate, checkWeeklyUpdate, deactivate } from '../src/index.ts'
-import { assetName, cachedServer, installRelease, previousServer, selectServer } from '../src/server.ts'
+import { assetName, cachedServer, installRelease, previousServer, removeServer, selectServer } from '../src/server.ts'
 
 async function waitFor(check: () => boolean | Promise<boolean>): Promise<void> {
   const deadline = Date.now() + 15000
@@ -148,8 +148,8 @@ describe('coc-vimls', () => {
       assert.deepEqual((await readdir(storage)).sort(), retained)
       assert.equal(assetName('win32', 'x64'), 'vimls-windows-amd64.exe')
       assert.throws(() => assetName('linux', 'ia32'), /No vimls-go release binary/)
-      // A broken current installation must not hide the usable previous binary.
-      await rm(third)
+      // A broken current installation can be removed and must not hide the usable previous binary.
+      await removeServer(storage, third)
       assert.equal(await cachedServer(storage), undefined)
       assert.equal(await previousServer(storage), second)
       await selectServer(storage, second)
