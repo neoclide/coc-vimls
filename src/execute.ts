@@ -68,6 +68,7 @@ export function runSystemVim(
   scriptPath: string,
   timeout = 10000,
   sourcePath?: string,
+  maxBuffer = 1024 * 1024,
 ): Promise<{ code: number | null; output: string }> {
   return new Promise((resolve, reject) => {
     // Name an in-memory buffer after the original file, then source only the
@@ -81,6 +82,7 @@ export function runSystemVim(
     ] : ['-S', scriptPath]
     const cp = spawn(vimBin, ['-u', 'NONE', '-i', 'NONE', '-N', '-es', '-V1', ...sourceArgs, '-c', 'qall!'])
     let output = ''
+    let truncated = false
     let timer: NodeJS.Timeout | undefined
 
     if (timeout > 0) {
@@ -90,12 +92,17 @@ export function runSystemVim(
       }, timeout)
     }
 
-    cp.stdout?.on('data', chunk => {
-      output += chunk.toString()
-    })
-    cp.stderr?.on('data', chunk => {
-      output += chunk.toString()
-    })
+    const append = (chunk: unknown) => {
+      if (truncated) return
+      output += String(chunk)
+      if (maxBuffer > 0 && output.length > maxBuffer) {
+        output = output.slice(0, maxBuffer) + '\n[output truncated]'
+        truncated = true
+      }
+    }
+
+    cp.stdout?.on('data', append)
+    cp.stderr?.on('data', append)
     cp.on('error', err => {
       if (timer) clearTimeout(timer)
       reject(err)

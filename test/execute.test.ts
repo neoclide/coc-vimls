@@ -91,6 +91,20 @@ describe('Vim execution utilities', () => {
         await rm(tmpDir, { recursive: true, force: true })
       }
     })
+
+    it('truncates output exceeding maxBuffer', async () => {
+      const tmpDir = await mkdtemp(join(tmpdir(), 'coc-vimls-test-'))
+      const scriptPath = join(tmpDir, 'test_overflow.vim')
+      try {
+        await writeFile(scriptPath, 'vim9script\necho repeat("a", 200)\n', 'utf8')
+        const { code, output } = await runSystemVim('vim', scriptPath, 10000, undefined, 50)
+        assert.equal(code, 0)
+        assert.ok(output.includes('[output truncated]'))
+        assert.ok(output.length <= 80)
+      } finally {
+        await rm(tmpDir, { recursive: true, force: true })
+      }
+    })
   })
 
   describe('executeVimScript', () => {
