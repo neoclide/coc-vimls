@@ -41,6 +41,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   let runtimepath = workspace.env.runtimepath.split(',')
   let lastError = ''
   let registered = false
+  let startup: Promise<void> | undefined
   const current = new LanguageClient('vimls', 'vimls-go', serverOptions, {
     documentSelector: [{ language: 'vim', scheme: 'file' }, { language: 'vim', scheme: 'untitled' }],
     initializationOptions: () => ({
@@ -63,7 +64,6 @@ export async function activate(context: ExtensionContext): Promise<void> {
     }
   }
   // Reject overlapping operations instead of silently dropping a different command.
-  let startup: Promise<void> | undefined
   const run = (operation: () => Promise<void>): Promise<void> => {
     if (updating) return Promise.reject(new Error('Another vimls operation is in progress; retry when it finishes.'))
     updating = operation().catch(error => {
@@ -77,6 +77,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   // The automatic initial startup must not make user commands fail as "in progress".
   const operate = async (operation: () => Promise<void>): Promise<void> => {
     await startup
+    if (!active || client !== current) throw new Error('vimls extension is no longer active')
     return run(operation)
   }
   const start = async () => {
@@ -248,6 +249,7 @@ export async function activate(context: ExtensionContext): Promise<void> {
   // Keep commands available even when the first installation or startup fails.
   startup = run(start).catch(() => {})
   await startup
+  startup = undefined
   if (active) void checkWeeklyUpdate(context)
 }
 
