@@ -1,3 +1,10 @@
+## 0.1.2
+
+- Merge pull request #4 from neoclide/copilot/fix-github-actions-job (dac7d64)
+- Avoid coc-test GitHub API rate limits in CI (472aa6c)
+- Fix `vimls.update` failing with "operation in progress" during startup (#3) (e20fe01)
+- Fix `vimls.update` failing with "operation in progress" during startup (#3) (21c260f)
+
 ## 0.0.4
 
 - fix failure test (9d40140)
