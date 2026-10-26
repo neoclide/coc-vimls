@@ -63,7 +63,8 @@ export async function activate(context: ExtensionContext): Promise<void> {
     }
   }
   // Reject overlapping operations instead of silently dropping a different command.
-  const operate = (operation: () => Promise<void>): Promise<void> => {
+  let startup: Promise<void> | undefined
+  const run = (operation: () => Promise<void>): Promise<void> => {
     if (updating) return Promise.reject(new Error('Another vimls operation is in progress; retry when it finishes.'))
     updating = operation().catch(error => {
       lastError = error instanceof Error ? error.message : String(error)
@@ -72,6 +73,11 @@ export async function activate(context: ExtensionContext): Promise<void> {
       throw error
     }).finally(() => { updating = undefined })
     return updating
+  }
+  // The automatic initial startup must not make user commands fail as "in progress".
+  const operate = async (operation: () => Promise<void>): Promise<void> => {
+    await startup
+    return run(operation)
   }
   const start = async () => {
     serverOptions.command ||= await window.withProgress({ title: 'Installing vimls-go' }, () => ensureServer(context.storagePath))
@@ -240,7 +246,8 @@ export async function activate(context: ExtensionContext): Promise<void> {
     }
   }, context.subscriptions)
   // Keep commands available even when the first installation or startup fails.
-  await operate(start).catch(() => {})
+  startup = run(start).catch(() => {})
+  await startup
   if (active) void checkWeeklyUpdate(context)
 }
 
