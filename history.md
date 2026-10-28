@@ -1,3 +1,7 @@
+## 0.1.3
+
+- fix: wait for activation startup before server operations (8644d7c)
+
 ## 0.1.2
 
 - Merge pull request #4 from neoclide/copilot/fix-github-actions-job (dac7d64)
